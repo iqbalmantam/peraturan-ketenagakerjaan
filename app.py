@@ -36,7 +36,7 @@ st.markdown(
 with st.sidebar:
   st.header("⚙️ Konfigurasi & Data")
 
-  # Input API Key Groq secara dinamis atau ambil dari Streamlit Secrets
+  # Input API Key Groq secara dinamis
   groq_api_key = st.text_input(
       "Masukkan Groq API Key:", type="password", help="Dapatkan dari console.groq.com"
   )
@@ -81,7 +81,7 @@ if process_btn:
       # 3. Buat Embeddings menggunakan model open-source ringan
       embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-      # 4. Simpan ke Chroma Vector Database secara in-memory/ephemeral
+      # 4. Simpan ke Chroma Vector Database secara in-memory
       vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
       st.session_state.vector_store = vector_store
 
