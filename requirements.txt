@@ -1,7 +1,9 @@
 streamlit
 langchain
-langchain-groq
+langchain-core
 langchain-community
+langchain-groq
+langchain-huggingface
 chromadb
 sentence-transformers
 pypdf
