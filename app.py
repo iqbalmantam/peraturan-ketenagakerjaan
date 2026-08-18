@@ -12,8 +12,8 @@ except ImportError:
 # ---------------------------------------------
 
 import streamlit as st
-from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains.retrieval import create_retrieval_chain
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate
@@ -21,11 +21,21 @@ from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# Konfigurasi Halaman Streamlit
+# Konfigurasi Halaman Streamlit (Menyembunyikan menu/logo GitHub bawaan dengan hide_streamlit_style)
 st.set_page_config(
     page_title="HR Policy Q&A Assistant", page_icon="🏢", layout="wide"
 )
 
+hide_streamlit_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
+# Judul Aplikasi
 st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
 st.markdown(
     "Unggah dokumen kebijakan perusahaan (PDF) dan tanyakan apa saja terkait"
@@ -48,6 +58,14 @@ with st.sidebar:
   )
 
   process_btn = st.button("Proses Dokumen")
+
+  # Watermark di Sidebar
+  st.markdown("---")
+  st.markdown(
+      "<p style='text-align: center; color: gray; font-size: 12px;'>Developed"
+      " by iqbalmantam</p>",
+      unsafe_allow_html=True,
+  )
 
 # Inisialisasi Sesi State untuk Penyimpanan Vektor
 if "vector_store" not in st.session_state:
@@ -156,3 +174,11 @@ else:
       "ℹ️ Silakan masukkan Groq API Key dan unggah file PDF kebijakan perusahaan"
       " di sidebar kiri untuk mulai."
   )
+
+# Watermark di bawah halaman utama
+st.markdown("---")
+st.markdown(
+    "<p style='text-align: center; color: gray; font-size: 13px;'>Developed by"
+    " <b>iqbalmantam</b></p>",
+    unsafe_allow_html=True,
+)
