@@ -12,20 +12,21 @@ except ImportError:
 # ---------------------------------------------
 
 import streamlit as st
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.retrieval import create_retrieval_chain
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
+from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# Konfigurasi Halaman Streamlit (Menyembunyikan menu/logo GitHub bawaan dengan hide_streamlit_style)
+# Konfigurasi Halaman Streamlit
 st.set_page_config(
     page_title="HR Policy Q&A Assistant", page_icon="🏢", layout="wide"
 )
 
+# Sembunyikan Header dan Footer bawaan Streamlit
 hide_streamlit_style = """
     <style>
     #MainMenu {visibility: hidden;}
@@ -46,7 +47,6 @@ st.markdown(
 with st.sidebar:
   st.header("⚙️ Konfigurasi & Data")
 
-  # Input API Key Groq secara dinamis
   groq_api_key = st.text_input(
       "Masukkan Groq API Key:", type="password", help="Dapatkan dari console.groq.com"
   )
@@ -81,7 +81,6 @@ if process_btn:
     with st.spinner(
         "Sedang memproses dokumen (membuat embeddings & indeks)..."
     ):
-      # Simpan file PDF sementara
       temp_file_path = f"./temp_{uploaded_file.name}"
       with open(temp_file_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
@@ -99,11 +98,10 @@ if process_btn:
       # 3. Buat Embeddings menggunakan model open-source ringan
       embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-      # 4. Simpan ke Chroma Vector Database secara in-memory
+      # 4. Simpan ke Chroma Vector Database
       vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
       st.session_state.vector_store = vector_store
 
-      # Hapus file sementara
       os.remove(temp_file_path)
 
       st.success(
@@ -119,29 +117,26 @@ if st.session_state.vector_store is not None:
       temperature=0.1,
   )
 
-  # Buat Prompt Khusus dengan Instruksi Citation
-  system_prompt = (
-      "Anda adalah asisten HR yang ramah dan profesional. "
-      "Gunakan konteks potongan dokumen kebijakan perusahaan berikut untuk"
-      " menjawab pertanyaan. "
-      "Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi"
-      " tersebut tidak ditemukan dalam dokumen. "
-      "Sertakan kutipan atau referensi halaman dokumen jika tersedia pada"
-      " konteks.\n\n"
-      "Konteks:\n{context}"
-  )
-
-  prompt = ChatPromptTemplate.from_messages([
-      ("system", system_prompt),
-      ("human", "{input}"),
-  ])
-
-  # Bangun RAG Chain
-  question_answer_chain = create_stuff_documents_chain(llm, prompt)
   retriever = st.session_state.vector_store.as_retriever(
       search_kwargs={"k": 3}
   )
-  rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+
+
+  # Fungsi untuk menggabungkan teks dokumen sumber
+  def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+
+  # Prompt Template dengan instruksi Citation
+  template = (
+      "Anda adalah asisten HR yang ramah dan profesional.\n"
+      "Gunakan konteks potongan dokumen kebijakan perusahaan berikut untuk menjawab pertanyaan.\n"
+      "Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.\n"
+      "Sertakan kutipan atau referensi halaman dokumen jika tersedia pada konteks.\n\n"
+      "Konteks:\n{context}\n\n"
+      "Pertanyaan: {question}"
+  )
+  prompt = ChatPromptTemplate.from_template(template)
 
   # Input Pertanyaan dari Pengguna
   user_query = st.chat_input(
@@ -154,10 +149,22 @@ if st.session_state.vector_store is not None:
 
     with st.chat_message("assistant"):
       with st.spinner("Mencari jawaban dalam dokumen..."):
-        # Eksekusi RAG Query
-        response = rag_chain.invoke({"input": user_query})
-        answer = response["answer"]
-        source_docs = response["context"]
+        # Ambil dokumen relevan untuk ditampilkan sumbernya (Citation)
+        source_docs = retriever.invoke(user_query)
+        context_text = format_docs(source_docs)
+
+        # Jalankan RAG chain manual menggunakan LCEL (LangChain Expression Language)
+        rag_chain = (
+            {
+                "context": lambda x: context_text,
+                "question": RunnablePassthrough(),
+            }
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
+
+        answer = rag_chain.invoke(user_query)
 
         # Tampilkan Jawaban Utama
         st.markdown(answer)
