@@ -26,9 +26,10 @@ st.set_page_config(
     page_title="HR Policy Q&A Assistant", page_icon="🏢", layout="wide"
 )
 
-# Sembunyikan Header dan Footer bawaan Streamlit
+# Sembunyikan Sidebar, Header, dan Footer bawaan Streamlit
 hide_streamlit_style = """
     <style>
+    [data-testid="stSidebar"] {display: none;}
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -56,127 +57,28 @@ except Exception:
 # Judul Aplikasi
 st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
 st.markdown(
-    "Asisten cerdas untuk menjawab pertanyaan seputar aturan, SOP, dan kebijakan"
-    " perusahaan."
+    "Asisten cerdas untuk menjawab pertanyaan seputar aturan, SOP, dan"
+    " kebijakan perusahaan."
 )
 
-# Sidebar untuk Navigasi & Mode Admin
-with st.sidebar:
-  st.header("⚙️ Menu Navigasi")
-
-  # Pilihan Mode (Karyawan vs Admin)
-  app_mode = st.radio("Pilih Mode:", ["💬 Chat Karyawan", "🔐 Mode Admin"])
-
-  st.markdown("---")
-
-  if app_mode == "🔐 Mode Admin":
-    st.subheader("Autentikasi Admin")
-    input_password = st.text_input("Masukkan Password Admin:", type="password")
-
-    if input_password == admin_pass_secret:
-      st.success("✅ Login Admin Berhasil!")
-      st.markdown("---")
-      st.subheader("📁 Upload Dokumen Peraturan")
-      uploaded_file = st.file_uploader(
-          "Pilih file PDF Peraturan/Handbook baru", type=["pdf"]
-      )
-      process_btn = st.button("Proses & Simpan Dokumen")
-    else:
-      if input_password:
-        st.error("❌ Password salah!")
-      else:
-      # Simpan state kosong jika belum login
-        uploaded_file = None
-        process_btn = False
-      st.info("ℹ️ Masukkan password admin (2273) untuk mengunggah dokumen.")
-  else:
-    st.subheader("📁 Unduh Dokumen Perusahaan")
-    st.markdown(
-        "Anda dapat mengunduh dokumen peraturan perusahaan resmi di sini."
-    )
-
-    # Cek apakah file dokumen perusahaan tersedia secara lokal di repo
-    default_doc_path = "peraturan_perusahaan.pdf"  # Letakkan file PDF ini di GitHub jika ingin langsung bisa didownload
-    if os.path.exists(default_doc_path):
-      with open(default_doc_path, "rb") as pdf_file:
-        PDFbyte = pdf_file.read()
-      st.download_button(
-          label="📥 Download Peraturan Perusahaan (PDF)",
-          data=PDFbyte,
-          file_name="Peraturan_Perusahaan.pdf",
-          mime="application/pdf",
-      )
-    else:
-      st.info(
-          "ℹ️ File dokumen belum diunggah oleh Admin ke server. Hubungi HR"
-          " untuk mendapatkan file."
-      )
-
-  # Watermark di Sidebar
-  st.markdown("---")
-  st.markdown(
-      "<p style='text-align: center; color: gray; font-size: 12px;'>Developed"
-      " by iqbalmantam</p>",
-      unsafe_allow_html=True,
-  )
-
-# Inisialisasi Sesi State untuk Penyimpanan Vektor & File Aktif
+# Inisialisasi Sesi State untuk Penyimpanan Vektor
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
 
-# Logika Pemrosesan Dokumen oleh Admin
-if app_mode == "🔐 Mode Admin" and input_password == admin_pass_secret:
-  if process_btn:
-    if not groq_api_key:
-      st.error("❌ Groq API Key belum diatur di Streamlit Secrets.")
-    elif not uploaded_file:
-      st.error("❌ Mohon unggah file PDF terlebih dahulu.")
-    else:
-      with st.spinner("Sedang memproses dokumen dan membuat indeks vektor..."):
-        # Simpan file sementara & file permanen untuk didownload user
-        temp_file_path = f"./temp_{uploaded_file.name}"
-        with open(temp_file_path, "wb") as f:
-          f.write(uploaded_file.getbuffer())
+# Gunakan Tab di Header Atas sebagai Menu Navigasi Utama
+tab1, tab2, tab3 = st.tabs(
+    ["💬 Chat Karyawan", "📥 Download Dokumen", "🔐 Mode Admin"]
+)
 
-        # Simpan juga sebagai default_doc_path agar bisa di-download di mode karyawan
-        with open("peraturan_perusahaan.pdf", "wb") as f:
-          f.write(uploaded_file.getbuffer())
-
-        # 1. Load Dokumen PDF
-        loader = PyPDFLoader(temp_file_path)
-        docs = loader.load()
-
-        # 2. Split Dokumen menjadi chunks
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=200
-        )
-        splits = text_splitter.split_documents(docs)
-
-        # 3. Buat Embeddings
-        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-
-        # 4. Simpan ke Vector Store
-        vector_store = Chroma.from_documents(
-            documents=splits, embedding=embeddings
-        )
-        st.session_state.vector_store = vector_store
-
-        os.remove(temp_file_path)
-        st.success(
-            "✅ Dokumen berhasil diproses dan disimpan! Silakan beralih ke"
-            " 'Chat Karyawan'."
-        )
-
-# Antarmuka Chat Utama (Mode Karyawan)
-if app_mode == "💬 Chat Karyawan":
+# --- TAB 1: CHAT KARYAWAN ---
+with tab1:
+  st.subheader("💬 Tanya Jawab Kebijakan Perusahaan")
   if st.session_state.vector_store is not None and groq_api_key:
-    # Inisialisasi LLM Groq
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name="llama-3.3-70b-versatile",
         temperature=0.1,
     )
-
     retriever = st.session_state.vector_store.as_retriever(
         search_kwargs={"k": 3}
     )
@@ -220,7 +122,6 @@ if app_mode == "💬 Chat Karyawan":
           )
 
           answer = rag_chain.invoke(user_query)
-
           st.markdown(answer)
 
           with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
@@ -232,9 +133,89 @@ if app_mode == "💬 Chat Karyawan":
   else:
     st.info(
         "ℹ️ Belum ada dokumen kebijakan yang diunggah. Silakan minta Admin"
-        " mengunggah dokumen melalui **Mode Admin** (Password: 2273) di sidebar"
-        " kiri."
+        " untuk mengunggah dokumen melalui menu **Mode Admin** di atas."
     )
+
+# --- TAB 2: DOWNLOAD DOKUMEN ---
+with tab2:
+  st.subheader("📥 Unduh Peraturan Perusahaan")
+  st.markdown(
+      "Anda dapat mengunduh dokumen resmi peraturan perusahaan melalui tombol di"
+      " bawah ini."
+  )
+
+  default_doc_path = "peraturan_perusahaan.pdf"
+  if os.path.exists(default_doc_path):
+    with open(default_doc_path, "rb") as pdf_file:
+      PDFbyte = pdf_file.read()
+    st.download_button(
+        label="📥 Download Peraturan Perusahaan (PDF)",
+        data=PDFbyte,
+        file_name="Peraturan_Perusahaan.pdf",
+        mime="application/pdf",
+    )
+  else:
+    st.warning(
+        "⚠️ File dokumen belum tersedia. Silakan hubungi Admin untuk mengunggah"
+        " dokumen."
+    )
+
+# --- TAB 3: MODE ADMIN ---
+with tab3:
+  st.subheader("🔐 Panel Admin")
+  input_password = st.text_input(
+      "Masukkan Password Admin:", type="password", key="admin_pass_input"
+  )
+
+  if input_password == admin_pass_secret:
+    st.success("✅ Autentikasi Admin Berhasil!")
+    st.markdown("---")
+    st.subheader("📁 Unggah Dokumen Peraturan Baru")
+    uploaded_file = st.file_uploader(
+        "Pilih file PDF Peraturan/Handbook", type=["pdf"]
+    )
+    process_btn = st.button("Proses & Simpan Dokumen")
+
+    if process_btn:
+      if not groq_api_key:
+        st.error("❌ Groq API Key belum diatur di Streamlit Secrets.")
+      elif not uploaded_file:
+        st.error("❌ Mohon unggah file PDF terlebih dahulu.")
+      else:
+        with st.spinner(
+            "Sedang memproses dokumen dan membuat indeks vektor..."
+        ):
+          temp_file_path = f"./temp_{uploaded_file.name}"
+          with open(temp_file_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+          with open("peraturan_perusahaan.pdf", "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+          loader = PyPDFLoader(temp_file_path)
+          docs = loader.load()
+
+          text_splitter = RecursiveCharacterTextSplitter(
+              chunk_size=1000, chunk_overlap=200
+          )
+          splits = text_splitter.split_documents(docs)
+
+          embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+          vector_store = Chroma.from_documents(
+              documents=splits, embedding=embeddings
+          )
+          st.session_state.vector_store = vector_store
+
+          os.remove(temp_file_path)
+          st.success(
+              "✅ Dokumen berhasil diproses dan disimpan! Silakan gunakan tab"
+              " Chat Karyawan."
+          )
+  else:
+    if input_password:
+      st.error("❌ Password salah!")
+    else:
+      st.info("ℹ️ Masukkan password admin untuk mengakses menu upload.")
 
 # Watermark di bawah halaman utama
 st.markdown("---")
