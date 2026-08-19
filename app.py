@@ -77,8 +77,6 @@ st.markdown(
 # Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
-if "raw_docs" not in st.session_state:
-  st.session_state.raw_docs = []
 if "raw_splits" not in st.session_state:
   st.session_state.raw_splits = []
 
@@ -99,10 +97,8 @@ with tab1:
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
-        st.session_state.raw_docs = docs
-        
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=100
+            chunk_size=800, chunk_overlap=150
         )
         splits = text_splitter.split_documents(docs)
         st.session_state.raw_splits = splits
@@ -129,9 +125,9 @@ with tab1:
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan. "
-                "DILARANG KERAS mengarang, menebak, atau membuat-buat informasi yang tidak tertulis secara nyata di dalam teks konteks. "
-                "Jika informasi tidak ditemukan di dalam teks, katakan dengan jujur bahwa informasi tersebut tidak tersedia di dokumen. "
+                "TUGAS UTAMA: Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi yang diberikan. "
+                "DILARANG KERAS mengarang, memodifikasi istilah, menebak-nebak, atau membuat-buat aturan yang tidak tertulis secara nyata di dalam teks konteks. "
+                "Jika teks konteks tidak jelas atau tidak lengkap, sampaikan apa adanya sesuai teks tanpa menambah-nambah istilah asing. "
                 "Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi dan profesional."
             ),
         ),
@@ -151,7 +147,7 @@ with tab1:
           try:
             ql = user_query.lower()
             
-            # --- 1. DIRECT OVERRIDE HANDLER UNTUK PHK ---
+            # --- DIRECT OVERRIDE HANDLER UNTUK PHK ---
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
               phk_response = """Berikut adalah ringkasan ketentuan mengenai Pemutusan Hubungan Kerja (PHK) berdasarkan dokumen Peraturan Perusahaan PT CJ Logistics Service Indonesia (Bab X, Pasal 52 sampai dengan Pasal 62):
 
@@ -192,8 +188,6 @@ with tab1:
 * Sehubungan dengan PHK, hutang-hutang pekerja kepada pengusaha dengan bukti yang sah akan diperhitungkan sekaligus dari uang pesangon, uang penghargaan masa kerja, uang penggantian hak, uang pisah, dan/atau uang kompensasi.  
 * Jika dana hak-hak tersebut tidak mencukupi untuk melunasi hutang, PHK tidak secara otomatis membebaskan pekerja dari sisa hutangnya kepada pengusaha."""
               st.markdown(phk_response)
-            
-            # --- 2. RETRIEVER PRESISI UNTUK CUTI/LAINNYA ---
             else:
               retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 4})
               source_docs = retriever.invoke(user_query)
@@ -266,10 +260,9 @@ with tab3:
 
             loader = PyPDFLoader(TARGET_PDF)
             docs = loader.load()
-            st.session_state.raw_docs = docs
             
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000, chunk_overlap=100
+                chunk_size=800, chunk_overlap=150
             )
             splits = text_splitter.split_documents(docs)
             st.session_state.raw_splits = splits
