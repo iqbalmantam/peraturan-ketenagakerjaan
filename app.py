@@ -14,9 +14,7 @@ except ImportError:
 import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -94,10 +92,9 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    # Menggunakan model llama3-8b-8192 yang stabil dan universal di Groq
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name="llama3-8b-8192",
+        model_name="llama-3.3-70b-versatile",
         temperature=0.1,
     )
     retriever = st.session_state.vector_store.as_retriever(
@@ -108,21 +105,6 @@ with tab1:
     def format_docs(docs):
       return "\n\n".join(doc.page_content for doc in docs)
 
-
-    prompt = ChatPromptTemplate.from_messages([
-        (
-            "system",
-            (
-                "Anda adalah asisten HR yang ramah dan profesional.\nGunakan"
-                " konteks potongan dokumen kebijakan perusahaan berikut untuk"
-                " menjawab pertanyaan.\nJika Anda tidak tahu jawabannya,"
-                " katakan dengan jujur bahwa informasi tersebut tidak ditemukan"
-                " dalam dokumen.\nSertakan kutipan atau referensi halaman"
-                " dokumen jika tersedia pada konteks.\n\nKonteks:\n{context}"
-            ),
-        ),
-        ("human", "{question}"),
-    ])
 
     user_query = st.chat_input(
         "Tanyakan tentang aturan cuti, klaim, atau SOP perusahaan..."
@@ -137,17 +119,23 @@ with tab1:
           source_docs = retriever.invoke(user_query)
           context_text = format_docs(source_docs)
 
-          rag_chain = (
-              {
-                  "context": lambda x: context_text,
-                  "question": RunnablePassthrough(),
-              }
-              | prompt
-              | llm
-              | StrOutputParser()
+          # Menyusun pesan sistem dan pertanyaan secara langsung
+          system_prompt = (
+              "Anda adalah asisten HR yang ramah dan profesional.\n"
+              "Gunakan konteks potongan dokumen kebijakan perusahaan berikut untuk menjawab pertanyaan.\n"
+              "Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.\n"
+              "Sertakan kutipan atau referensi halaman dokumen jika tersedia pada konteks.\n\n"
+              f"Konteks:\n{context_text}"
           )
 
-          answer = rag_chain.invoke(user_query)
+          messages = [
+              SystemMessage(content=system_prompt),
+              HumanMessage(content=user_query),
+          ]
+
+          response = llm.invoke(messages)
+          answer = response.content
+
           st.markdown(answer)
 
           with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
