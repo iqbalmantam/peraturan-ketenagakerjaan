@@ -124,7 +124,7 @@ with tab1:
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.0,
-        max_tokens=1500,
+        max_tokens=512, # Disesuaikan agar tidak melebihi batasan model
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
