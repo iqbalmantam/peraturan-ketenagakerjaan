@@ -91,13 +91,13 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memuat seluruh dokumen peraturan perusahaan (52 Halaman)..."):
+    with st.spinner("Memproses seluruh dokumen peraturan perusahaan (52 Halaman)..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
-        # Dioptimalkan dengan chunk_size 800 agar pencarian pasal lebih presisi
+        # Diperbesar menjadi chunk_size 1500 agar 1 pasal utuh tidak terpotong
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=800, chunk_overlap=150
+            chunk_size=1500, chunk_overlap=300
         )
         splits = text_splitter.split_documents(docs)
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -121,16 +121,14 @@ with tab1:
         search_kwargs={"k": 5}
     )
 
-    # Menggunakan ChatPromptTemplate dengan peran sistem & manusia untuk mencegah looping
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
-                "Anda adalah asisten HR perusahaan yang profesional, akurat, dan to the point."
-                " Jawablah pertanyaan karyawan HANYA berdasarkan konteks dokumen kebijakan perusahaan"
-                " yang diberikan di bawah ini. Jika informasi tidak ditemukan dalam konteks,"
-                " katakan dengan jujur bahwa informasi tersebut tidak ada. Jangan mengulang-ulang"
-                " teks atau membuat pola looping."
+                "Anda adalah asisten HR perusahaan yang profesional dan akurat."
+                " Jawablah pertanyaan karyawan HANYA berdasarkan teks pasal yang ada di dalam"
+                " konteks dokumen kebijakan perusahaan. Jika informasi mengenai topik tersebut"
+                " tidak ditemukan di dalam konteks, katakan dengan jujur bahwa informasi tidak tersedia."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -145,20 +143,11 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban akurat dalam dokumen..."):
+        with st.spinner("Mencari pasal yang sesuai dalam dokumen..."):
           try:
-            # Perluasan kata kunci otomatis agar istilah singkatan seperti PHK langsung terbaca
-            query_to_search = user_query
-            ql = user_query.lower()
-            if "phk" in ql or "pemutusan" in ql:
-                query_to_search = "pemutusan hubungan kerja PHK pesangon uang penghargaan masa kerja pengakhiran"
-            elif "cuti" in ql:
-                query_to_search = "cuti cuti tahunan hak cuti bersama"
-
-            source_docs = retriever.invoke(query_to_search)
+            source_docs = retriever.invoke(user_query)
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
-            # Format pesan chat secara bersih
             messages = chat_prompt.format_messages(
                 context=context_text, question=user_query
             )
@@ -247,7 +236,7 @@ with tab3:
             docs = loader.load()
 
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=800, chunk_overlap=150
+                chunk_size=1500, chunk_overlap=300
             )
             splits = text_splitter.split_documents(docs)
 
