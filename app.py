@@ -102,7 +102,7 @@ with tab1:
         )
         splits = text_splitter.split_documents(docs)
         
-        # Simpan seluruh pecahan teks untuk pencarian langsung
+        # Simpan seluruh pecahan teks untuk routing bab khusus
         st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -131,9 +131,8 @@ with tab1:
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan perusahaan yang diberikan di bawah ini secara lengkap, jelas, dan profesional dalam bentuk poin-poin yang rapi. "
-                "Jika informasi tentang topik tersebut terdapat dalam konteks, jelaskan selengkap-lengkapnya. "
-                "Jangan katakan informasi tidak ditemukan jika teks konteks memuat informasi yang relevan."
+                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan secara lengkap, terstruktur, dan profesional dalam bentuk poin-poin. "
+                "Jelaskan ketentuan pasal-pasal yang tercantum dalam konteks secara rinci."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -148,29 +147,29 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban akurat di dalam program..."):
+        with st.spinner("Mencari pasal resmi di dalam program..."):
           try:
             ql = user_query.lower()
-            source_docs = retriever.invoke(user_query)
             
-            # --- SMART OVERRIDE: Paksa ambil Bab X (PHK / Pasal 52-62) jika user menanyakan PHK ---
+            # --- CHAPTER ROUTING: Paksa tarik Bab X (Pasal 52-62 tentang PHK) ---
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
-                phk_chunks = [
+                source_docs = [
                     doc for doc in st.session_state.raw_splits 
-                    if any(term in doc.page_content.lower() for term in ["pasal 52", "pasal 61", "pemutusan hubungan kerja", "pesangon"])
+                    if any(term in doc.page_content.lower() for term in ["bab x", "pasal 52", "pasal 55", "pasal 61", "pesangon"])
                 ]
-                if phk_chunks:
-                    source_docs = phk_chunks[:6] + source_docs
-
-            # Hilangkan duplikasi dokumen
-            seen = set()
-            unique_docs = []
-            for d in source_docs:
-                identifier = (d.metadata.get("page"), d.page_content[:40])
-                if identifier not in seen:
-                    seen.add(identifier)
-                    unique_docs.append(d)
-            source_docs = unique_docs[:6]
+                if not source_docs:
+                    source_docs = retriever.invoke(user_query)
+                else:
+                    source_docs = source_docs[:6]
+            elif "cuti" in ql:
+                source_docs = [
+                    doc for doc in st.session_state.raw_splits 
+                    if "cuti" in doc.page_content.lower()
+                ][:6]
+                if not source_docs:
+                    source_docs = retriever.invoke(user_query)
+            else:
+                source_docs = retriever.invoke(user_query)
 
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
