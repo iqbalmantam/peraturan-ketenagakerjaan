@@ -12,9 +12,11 @@ except ImportError:
 # ---------------------------------------------
 
 import streamlit as st
+from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -92,20 +94,32 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    # --- PERBAIKAN MODEL ADA DI SINI ---
+    # Menggunakan Mixtral (Sangat tangguh, jarang terkena BadRequestError)
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name="llama3-8b-8192",  # Model yang dijamin aktif
+        model_name="mixtral-8x7b-32768",
         temperature=0.1,
     )
     retriever = st.session_state.vector_store.as_retriever(
         search_kwargs={"k": 3}
     )
 
+    # Menggunakan format ChatPromptTemplate bawaan standar Langchain
+    system_prompt = (
+        "Anda adalah asisten HR yang ramah dan profesional.\n"
+        "Gunakan konteks potongan dokumen kebijakan perusahaan berikut untuk menjawab pertanyaan.\n"
+        "Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.\n"
+        "Sertakan kutipan referensi halaman dokumen jika tersedia pada konteks.\n\n"
+        "Konteks:\n{context}"
+    )
 
-    def format_docs(docs):
-      return "\n\n".join(doc.page_content for doc in docs)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system_prompt),
+        ("human", "{input}"),
+    ])
 
+    question_answer_chain = create_stuff_documents_chain(llm, prompt)
+    rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
     user_query = st.chat_input(
         "Tanyakan tentang aturan cuti, klaim, atau SOP perusahaan..."
@@ -117,34 +131,25 @@ with tab1:
 
       with st.chat_message("assistant"):
         with st.spinner("Mencari jawaban dalam dokumen..."):
-          source_docs = retriever.invoke(user_query)
-          context_text = format_docs(source_docs)
+          try:
+            # Eksekusi RAG Chain yang aman
+            response = rag_chain.invoke({"input": user_query})
+            answer = response["answer"]
+            source_docs = response["context"]
 
-          # Menyusun pesan sistem dan pertanyaan secara langsung
-          system_prompt = (
-              "Anda adalah asisten HR yang ramah dan profesional.\n"
-              "Gunakan konteks potongan dokumen kebijakan perusahaan berikut untuk menjawab pertanyaan.\n"
-              "Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.\n"
-              "Sertakan kutipan atau referensi halaman dokumen jika tersedia pada konteks.\n\n"
-              f"Konteks:\n{context_text}"
-          )
+            st.markdown(answer)
 
-          messages = [
-              SystemMessage(content=system_prompt),
-              HumanMessage(content=user_query),
-          ]
-
-          response = llm.invoke(messages)
-          answer = response.content
-
-          st.markdown(answer)
-
-          with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
-            for i, doc in enumerate(source_docs):
-              page_num = doc.metadata.get("page", 0)
-              st.markdown(f"**Sumber {i+1} (Halaman {page_num + 1}):**")
-              st.markdown(f"> {doc.page_content[:300]}...")
-              st.markdown("---")
+            with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
+              for i, doc in enumerate(source_docs):
+                page_num = doc.metadata.get("page", 0)
+                st.markdown(f"**Sumber {i+1} (Halaman {page_num + 1}):**")
+                st.markdown(f"> {doc.page_content[:300]}...")
+                st.markdown("---")
+          except Exception as e:
+            st.error(
+                "Masa tunggu API Groq habis atau terjadi kesalahan format. Mohon"
+                f" ulangi pertanyaan Anda. (Detail: {e})"
+            )
   else:
     if not groq_api_key:
       st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
