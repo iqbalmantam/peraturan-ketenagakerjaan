@@ -13,6 +13,7 @@ import streamlit as st
 from groq import Groq
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -22,7 +23,7 @@ st.set_page_config(
     page_title="HR Policy Q&A Assistant", page_icon="🏢", layout="wide"
 )
 
-# Sembunyikan Sidebar, Header, dan Footer bawaan Streamlit
+# Sembunyikan Sidebar bawaan Streamlit
 hide_streamlit_style = """
     <style>
     [data-testid="stSidebar"] {display: none;}
@@ -90,12 +91,13 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memuat dokumen peraturan perusahaan (52 Halaman)..."):
+    with st.spinner("Memuat seluruh dokumen peraturan perusahaan (52 Halaman)..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
+        # Dioptimalkan dengan chunk_size 800 agar pencarian pasal lebih presisi
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=200
+            chunk_size=800, chunk_overlap=150
         )
         splits = text_splitter.split_documents(docs)
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -116,8 +118,23 @@ with tab1:
     )
     
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 6}
+        search_kwargs={"k": 5}
     )
+
+    # Menggunakan ChatPromptTemplate dengan peran sistem & manusia untuk mencegah looping
+    chat_prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            (
+                "Anda adalah asisten HR perusahaan yang profesional, akurat, dan to the point."
+                " Jawablah pertanyaan karyawan HANYA berdasarkan konteks dokumen kebijakan perusahaan"
+                " yang diberikan di bawah ini. Jika informasi tidak ditemukan dalam konteks,"
+                " katakan dengan jujur bahwa informasi tersebut tidak ada. Jangan mengulang-ulang"
+                " teks atau membuat pola looping."
+            ),
+        ),
+        ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
+    ])
 
     user_query = st.chat_input(
         "Tanyakan tentang aturan cuti, PHK, klaim, atau SOP perusahaan..."
@@ -128,27 +145,24 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban yang akurat..."):
+        with st.spinner("Mencari jawaban akurat dalam dokumen..."):
           try:
-            # Perluasan kata kunci otomatis yang lebih spesifik untuk PHK
+            # Perluasan kata kunci otomatis agar istilah singkatan seperti PHK langsung terbaca
             query_to_search = user_query
-            if "phk" in user_query.lower() or "pemutusan" in user_query.lower():
-                query_to_search = "pemutusan hubungan kerja PHK pesangon pengunduran diri PHK massal"
+            ql = user_query.lower()
+            if "phk" in ql or "pemutusan" in ql:
+                query_to_search = "pemutusan hubungan kerja PHK pesangon uang penghargaan masa kerja pengakhiran"
+            elif "cuti" in ql:
+                query_to_search = "cuti cuti tahunan hak cuti bersama"
 
             source_docs = retriever.invoke(query_to_search)
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
-            # Prompt langsung anti-looping
-            final_prompt = f"""Anda adalah asisten HR yang profesional. Berdasarkan isi dokumen kebijakan perusahaan berikut, berikan jawaban yang jelas, lengkap, dan langsung pada inti pertanyaan karyawan. Jangan mengulang-ulang kalimat atau membuat daftar nomor yang tidak perlu.
-
-Konteks Dokumen:
-{context_text}
-
-Pertanyaan Karyawan: {user_query}
-
-Jawaban Profesional:"""
-
-            response = llm.invoke(final_prompt)
+            # Format pesan chat secara bersih
+            messages = chat_prompt.format_messages(
+                context=context_text, question=user_query
+            )
+            response = llm.invoke(messages)
             answer = response.content
 
             st.markdown(answer)
@@ -233,7 +247,7 @@ with tab3:
             docs = loader.load()
 
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000, chunk_overlap=200
+                chunk_size=800, chunk_overlap=150
             )
             splits = text_splitter.split_documents(docs)
 
