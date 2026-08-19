@@ -13,8 +13,6 @@ import streamlit as st
 from groq import Groq
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -92,7 +90,7 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memuat dokumen peraturan perusahaan..."):
+    with st.spinner("Memuat dokumen peraturan perusahaan (52 Halaman)..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
@@ -121,21 +119,6 @@ with tab1:
         search_kwargs={"k": 6}
     )
 
-    def format_docs(docs):
-      return "\n\n".join(doc.page_content for doc in docs)
-
-    template = """Anda adalah asisten HR yang profesional. Jawablah pertanyaan karyawan berdasarkan konteks dokumen kebijakan perusahaan di bawah ini secara jelas dan terstruktur dalam bentuk paragraf atau poin penjelasan.
-
-Konteks Dokumen:
-{context}
-
-Pertanyaan: {question}
-
-Jawaban:"""
-    
-    prompt = PromptTemplate.from_template(template)
-    rag_chain = prompt | llm | StrOutputParser()
-
     user_query = st.chat_input(
         "Tanyakan tentang aturan cuti, PHK, klaim, atau SOP perusahaan..."
     )
@@ -145,22 +128,28 @@ Jawaban:"""
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban dalam dokumen..."):
+        with st.spinner("Mencari jawaban yang akurat..."):
           try:
-            # --- PERLUASAN KATA KUNCI (QUERY EXPANSION) ---
-            search_query = user_query
-            if "phk" in user_query.lower():
-                search_query = "phk pemutusan hubungan kerja pesangon pengakhiran hubungan kerja"
-            elif "cuti" in user_query.lower():
-                search_query = "cuti cuti tahunan hak cuti"
+            # Perluasan kata kunci otomatis yang lebih spesifik untuk PHK
+            query_to_search = user_query
+            if "phk" in user_query.lower() or "pemutusan" in user_query.lower():
+                query_to_search = "pemutusan hubungan kerja PHK pesangon pengunduran diri PHK massal"
 
-            source_docs = retriever.invoke(search_query)
-            context_text = format_docs(source_docs)
+            source_docs = retriever.invoke(query_to_search)
+            context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
-            answer = rag_chain.invoke({
-                "context": context_text,
-                "question": user_query
-            })
+            # Prompt langsung anti-looping
+            final_prompt = f"""Anda adalah asisten HR yang profesional. Berdasarkan isi dokumen kebijakan perusahaan berikut, berikan jawaban yang jelas, lengkap, dan langsung pada inti pertanyaan karyawan. Jangan mengulang-ulang kalimat atau membuat daftar nomor yang tidak perlu.
+
+Konteks Dokumen:
+{context_text}
+
+Pertanyaan Karyawan: {user_query}
+
+Jawaban Profesional:"""
+
+            response = llm.invoke(final_prompt)
+            answer = response.content
 
             st.markdown(answer)
 
@@ -224,7 +213,7 @@ with tab3:
     with st.form("admin_upload_form"):
       uploaded_file = st.file_uploader(
           "Pilih file PDF Peraturan/Handbook baru", type=["pdf"]
-        )
+      )
       submit_btn = st.form_submit_button("Proses & Perbarui Dokumen")
 
     if submit_btn:
