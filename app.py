@@ -77,8 +77,6 @@ st.markdown(
 # Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
-if "raw_splits" not in st.session_state:
-  st.session_state.raw_splits = []
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
@@ -102,8 +100,6 @@ with tab1:
         )
         splits = text_splitter.split_documents(docs)
         
-        st.session_state.raw_splits = splits
-        
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         st.session_state.vector_store = Chroma.from_documents(
             documents=splits, embedding=embeddings
@@ -117,12 +113,13 @@ with tab1:
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
-        temperature=0.0,
-        max_tokens=800,
+        temperature=0.1,
+        max_tokens=1024,
     )
     
+    # Retriever standar ditingkatkan kapasitasnya ke k=8 agar menangkap lebih banyak konteks
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 5}
+        search_kwargs={"k": 8}
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -130,10 +127,8 @@ with tab1:
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini secara ringkas, padat, dan jelas. "
-                "Jika informasi tentang topik tersebut tidak ditemukan di dalam konteks, Anda WAJIB menjawab dengan persis: "
-                "'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' "
-                "Dilarang keras mengulang-ulang kalimat atau berhalusinasi."
+                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan perusahaan yang diberikan di bawah ini secara lengkap, jelas, dan profesional. "
+                "Jika informasi benar-benar tidak ada di dalam konteks, katakan: 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.'"
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -148,50 +143,11 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban secara presisi dari 52 halaman dokumen..."):
+        with st.spinner("Mencari jawaban dari dokumen..."):
           try:
-            query_clean = user_query.lower().strip()
-            
-            # Deteksi apakah query mencari topik PHK / Pemutusan Hubungan Kerja
-            is_phk_query = any(k in query_clean for k in ["phk", "pemutus", "pesangon", "pengakhiran"])
-            
-            scored_docs = []
-            for doc in st.session_state.raw_splits:
-                content_normalized = doc.page_content.lower().replace("\n", " ")
-                score = 0
-                
-                # --- FILTER KETAT (MENCEGAH HALAMAN 9 NYASAR) ---
-                if is_phk_query:
-                    # Jika mencari PHK, chunk WAJIB memiliki salah satu kata kunci ini. Jika tidak, skip total!
-                    if not any(k in content_normalized for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "uang pisah"]):
-                        continue
-                
-                # Beri poin jika frasa persis cocok
-                if query_clean in content_normalized:
-                    score += 30
-                
-                # Beri poin untuk kata-kata penting di dalam query
-                tokens = [t for t in query_clean.split() if len(t) > 2]
-                for token in tokens:
-                    if token in content_normalized:
-                        score += 5
-
-                if score > 0:
-                    scored_docs.append((score, doc))
-            
-            # Urutkan berdasarkan skor tertinggi
-            scored_docs.sort(key=lambda x: x[0], reverse=True)
-            
-            if scored_docs:
-                source_docs = [doc for score, doc in scored_docs[:5]]
-            else:
-                # Jika sama sekali tidak ada yang cocok dengan filter ketat, berikan list kosong agar AI bilang tidak ditemukan
-                source_docs = []
-
-            if source_docs:
-                context_text = "\n\n".join([doc.page_content for doc in source_docs])
-            else:
-                context_text = "Tidak ada informasi yang relevan."
+            # Pencarian vektor murni yang mencakup berbagai variasi teks di 52 halaman
+            source_docs = retriever.invoke(user_query)
+            context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
             messages = chat_prompt.format_messages(
                 context=context_text, question=user_query
@@ -285,7 +241,6 @@ with tab3:
                 chunk_size=1000, chunk_overlap=200
             )
             splits = text_splitter.split_documents(docs)
-            st.session_state.raw_splits = splits
 
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             vector_store = Chroma.from_documents(
