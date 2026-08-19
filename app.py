@@ -19,29 +19,32 @@ from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# Konfigurasi Halaman Streamlit
+# Konfigurasi Halaman
 st.set_page_config(page_title="HR Policy Q&A Assistant", page_icon="🏢", layout="wide")
-
-# Sembunyikan Sidebar
 st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
 
-# Ambil Konfigurasi
-groq_api_key = st.secrets.get("GROQ_API_KEY")
-admin_pass_secret = st.secrets.get("ADMIN_PASSWORD", "2273")
+# --- PERBAIKAN PEMBACAAN API KEY ---
+def get_secret(key_name):
+    # Cek di root secrets, lalu di section 'general', lalu di env var
+    if key_name in st.secrets: return st.secrets[key_name]
+    if "general" in st.secrets and key_name in st.secrets["general"]: return st.secrets["general"][key_name]
+    return os.environ.get(key_name)
 
-# Fungsi untuk menemukan model yang PASTI aktif di akun Anda
+groq_api_key = get_secret("GROQ_API_KEY")
+admin_pass_secret = get_secret("ADMIN_PASSWORD") or "2273"
+
+# Fungsi Auto-Discovery Model
 @st.cache_data(show_spinner=False)
 def get_active_model(api_key):
     try:
         client = Groq(api_key=api_key)
-        # Ambil model pertama yang tersedia yang bukan model audio/vision
         models = client.models.list().data
         for m in models:
             if "whisper" not in m.id and "vision" not in m.id:
                 return m.id
-        return "llama3-8b-8192"
+        return "llama-3.1-8b-instant"
     except:
-        return "llama3-8b-8192"
+        return "llama-3.1-8b-instant"
 
 st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
 
@@ -54,7 +57,7 @@ tab1, tab2, tab3 = st.tabs(["💬 Chat Karyawan", "📥 Download Dokumen", "🔐
 # --- TAB 1 ---
 with tab1:
     if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-        with st.spinner("Memuat dokumen..."):
+        with st.spinner("Memproses dokumen..."):
             loader = PyPDFLoader(TARGET_PDF)
             docs = loader.load()
             splits = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200).split_documents(docs)
@@ -73,19 +76,18 @@ with tab1:
                 try:
                     docs = retriever.invoke(user_query)
                     context = "\n\n".join([d.page_content for d in docs])
-                    prompt = PromptTemplate.from_template("Gunakan konteks ini: {context}\n\nJawab: {question}").format(context=context, question=user_query)
+                    prompt = PromptTemplate.from_template("Konteks: {context}\n\nJawab: {question}").format(context=context, question=user_query)
                     answer = llm.invoke(prompt).content
                     st.markdown(answer)
                 except Exception as e:
-                    st.error(f"Error AI: {e}")
+                    st.error(f"Error AI ({model_name}): {e}")
     else:
-        st.info("Pastikan API Key sudah benar dan dokumen sudah di-commit.")
+        st.info("API Key tidak terbaca. Pastikan `GROQ_API_KEY` terisi di Settings > Secrets Streamlit Cloud.")
 
 # --- TAB 2 & 3 ---
 with tab2:
     if os.path.exists(TARGET_PDF):
-        with open(TARGET_PDF, "rb") as f:
-            st.download_button("📥 Download PDF", data=f, file_name=TARGET_PDF)
+        with open(TARGET_PDF, "rb") as f: st.download_button("📥 Download PDF", data=f, file_name=TARGET_PDF)
 with tab3:
     pwd = st.text_input("Password:", type="password")
     if pwd == admin_pass_secret:
