@@ -102,7 +102,7 @@ with tab1:
         )
         splits = text_splitter.split_documents(docs)
         
-        # Simpan seluruh teks mentah untuk pencarian kata kunci langsung
+        # Simpan raw_splits untuk algoritma scoring pencarian
         st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -119,7 +119,7 @@ with tab1:
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.0,
-        max_tokens=512,
+        max_tokens=800,
     )
     
     retriever = st.session_state.vector_store.as_retriever(
@@ -149,30 +149,43 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban dari dokumen..."):
+        with st.spinner("Mencari jawaban secara presisi dari 52 halaman dokumen..."):
           try:
-            ql = user_query.lower()
+            # --- ALGORITMA PENCARIAN PRESISI BERBASIS TOKEN & NORMALISASI TEKS ---
+            query_clean = user_query.lower().strip()
+            tokens = [t for t in query_clean.split() if len(t) > 2] # Ambil kata penting (> 2 huruf)
             
-            # --- PENCARIAN KATA KUNCI LANGSUNG (DIRECT KEYWORD MATCHING) ---
-            if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
-                # Memfilter langsung seluruh pecahan dokumen yang mengandung kata kunci PHK/Pesangon
-                source_docs = [
-                    doc for doc in st.session_state.raw_splits 
-                    if any(word in doc.page_content.lower() for word in ["phk", "pemutusan", "pesangon", "pengakhiran", "uang pisah"])
-                ]
-                # Jika tidak ketemu lewat keyword, fallback ke retriever biasa
-                if not source_docs:
-                    source_docs = retriever.invoke(user_query)
-                else:
-                    source_docs = source_docs[:6]
-            elif "cuti" in ql:
-                source_docs = [
-                    doc for doc in st.session_state.raw_splits 
-                    if "cuti" in doc.page_content.lower()
-                ][:6]
-                if not source_docs:
-                    source_docs = retriever.invoke(user_query)
+            scored_docs = []
+            for doc in st.session_state.raw_splits:
+                # Normalisasi teks dokumen: ratakan newline menjadi spasi
+                content_normalized = doc.page_content.lower().replace("\n", " ")
+                score = 0
+                
+                # Beri poin tinggi jika frasa persis ditemukan
+                if query_clean in content_normalized:
+                    score += 20
+                
+                # Beri poin untuk setiap token penting yang cocok
+                for token in tokens:
+                    if token in content_normalized:
+                        score += 3
+                        
+                # Booster khusus untuk istilah hukum/ketenagakerjaan krusial
+                if any(k in query_clean for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
+                    if any(k in content_normalized for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "uang pisah"]):
+                        score += 15
+
+                if score > 0:
+                    scored_docs.append((score, doc))
+            
+            # Urutkan berdasarkan skor tertinggi
+            scored_docs.sort(key=lambda x: x[0], reverse=True)
+            
+            if scored_docs:
+                # Ambil 5 dokumen dengan skor tertinggi
+                source_docs = [doc for score, doc in scored_docs[:5]]
             else:
+                # Fallback ke vector retriever standar jika tidak ada skor yang cocok
                 source_docs = retriever.invoke(user_query)
 
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
