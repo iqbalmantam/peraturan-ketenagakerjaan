@@ -93,10 +93,10 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    # --- MENGGUNAKAN MODEL MIXTRAL (ANTI-ERROR & SELALU TERSEDIA) ---
+    # --- MODEL GEMMA 2 (SANGAT STABIL & AKTIF DI GROQ) ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name="mixtral-8x7b-32768",
+        model_name="gemma2-9b-it",
         temperature=0.1,
     )
     retriever = st.session_state.vector_store.as_retriever(
