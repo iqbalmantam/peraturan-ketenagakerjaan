@@ -110,27 +110,26 @@ with tab1:
   if st.session_state.vector_store is not None and groq_api_key:
     selected_model = get_safe_model(groq_api_key)
     
+    # --- DIBATASI max_tokens=500 AGAR TIDAK TERJADI LOOPING TEKS ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.1,
-        max_tokens=1024,
+        max_tokens=500,
     )
     
     retriever = st.session_state.vector_store.as_retriever(
         search_kwargs={"k": 10}
     )
 
-    # --- SYSTEM PROMPT DISEMPURNAKAN AGAR MENJELASKAN DEFINISI YANG DITEMUKAN ---
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan perusahaan yang diberikan di bawah ini. "
-                "Jika konteks memuat definisi, ketentuan, atau istilah yang berkaitan dengan pertanyaan (seperti definisi PHK, pesangon, uang penghargaan, uang penggantian hak, dan uang pisah), "
-                "jelaskan dan uraikan hal tersebut dengan jelas kepada karyawan dalam bentuk poin-poin yang rapi. "
-                "Jangan katakan informasi tidak ditemukan jika teks konteks memuat informasi yang relevan."
+                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan. "
+                "Berikan penjelasan yang padat, terstruktur, dan langsung pada pokok bahasan. "
+                "DILARANG KERAS mengulang-ulang kalimat atau melakukan looping teks."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -151,7 +150,7 @@ with tab1:
             ql = user_query.lower()
             scored_docs = []
             
-            # Keyword boosting agar Halaman 6 (Definisi PHK & Pesangon) diprioritaskan
+            # Keyword boosting untuk memprioritaskan Halaman 6 (Definisi PHK & Pesangon)
             for doc in initial_docs:
                 score = 0
                 content_lower = doc.page_content.lower()
