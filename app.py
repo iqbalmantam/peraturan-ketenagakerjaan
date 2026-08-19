@@ -92,9 +92,10 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
+    # --- PERBAIKAN MODEL ADA DI SINI ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name="llama-3.3-70b-versatile",
+        model_name="llama3-8b-8192",  # Model yang dijamin aktif
         temperature=0.1,
     )
     retriever = st.session_state.vector_store.as_retriever(
