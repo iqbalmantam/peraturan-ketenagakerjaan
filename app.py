@@ -98,7 +98,7 @@ with tab1:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=800, chunk_overlap=150
+            chunk_size=1000, chunk_overlap=100
         )
         splits = text_splitter.split_documents(docs)
         st.session_state.raw_splits = splits
@@ -125,9 +125,9 @@ with tab1:
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "TUGAS UTAMA: Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi yang diberikan. "
-                "DILARANG KERAS mengarang, memodifikasi istilah, menebak-nebak, atau membuat-buat aturan yang tidak tertulis secara nyata di dalam teks konteks. "
-                "Jika teks konteks tidak jelas atau tidak lengkap, sampaikan apa adanya sesuai teks tanpa menambah-nambah istilah asing. "
+                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan. "
+                "DILARANG KERAS mengarang, menebak-nebak, atau membuat-buat informasi yang tidak tertulis secara nyata di dalam teks konteks. "
+                "Jika informasi tidak ditemukan di dalam teks, katakan dengan jujur bahwa informasi tersebut tidak tersedia di dokumen. "
                 "Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi dan profesional."
             ),
         ),
@@ -147,7 +147,7 @@ with tab1:
           try:
             ql = user_query.lower()
             
-            # --- DIRECT OVERRIDE HANDLER UNTUK PHK ---
+            # --- 1. DIRECT OVERRIDE HANDLER UNTUK PHK ---
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
               phk_response = """Berikut adalah ringkasan ketentuan mengenai Pemutusan Hubungan Kerja (PHK) berdasarkan dokumen Peraturan Perusahaan PT CJ Logistics Service Indonesia (Bab X, Pasal 52 sampai dengan Pasal 62):
 
@@ -188,11 +188,38 @@ with tab1:
 * Sehubungan dengan PHK, hutang-hutang pekerja kepada pengusaha dengan bukti yang sah akan diperhitungkan sekaligus dari uang pesangon, uang penghargaan masa kerja, uang penggantian hak, uang pisah, dan/atau uang kompensasi.  
 * Jika dana hak-hak tersebut tidak mencukupi untuk melunasi hutang, PHK tidak secara otomatis membebaskan pekerja dari sisa hutangnya kepada pengusaha."""
               st.markdown(phk_response)
+            
+            # --- 2. HANDLER CUTI (Blokir Pasal 8 Pengawasan agar tidak salah tarik) ---
+            elif any(k in ql for k in ["cuti", "libur", "izin", "istirahat"]):
+              leave_docs = [
+                  d for d in st.session_state.raw_splits
+                  if any(term in d.page_content.lower() for term in ["cuti", "istirahat", "izin", "libur"])
+                  and "pasal 8" not in d.page_content.lower()
+                  and "tanggung jawab pengawasan" not in d.page_content.lower()
+              ]
+              
+              if leave_docs:
+                seen_texts = set()
+                unique_leave = []
+                for d in leave_docs:
+                    if d.page_content not in seen_texts:
+                        seen_texts.add(d.page_content)
+                        unique_leave.append(d)
+                context_text = "\n\n".join([d.page_content for d in unique_leave[:5]])
+              else:
+                context_text = "Informasi mengenai cuti tidak ditemukan di dalam dokumen."
+
+              messages = chat_prompt.format_messages(
+                  context=context_text, question=user_query
+              )
+              response = llm.invoke(messages)
+              st.markdown(response.content)
+
+            # --- 3. STANDARD RETRIEVER UNTUK TOPIK LAIN ---
             else:
               retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 4})
               source_docs = retriever.invoke(user_query)
               
-              # Deduplikasi dokumen agar tidak terjadi looping teks
               seen_texts = set()
               unique_docs = []
               for d in source_docs:
@@ -260,9 +287,10 @@ with tab3:
 
             loader = PyPDFLoader(TARGET_PDF)
             docs = loader.load()
+            st.session_state.raw_docs = docs
             
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=800, chunk_overlap=150
+                chunk_size=1000, chunk_overlap=100
             )
             splits = text_splitter.split_documents(docs)
             st.session_state.raw_splits = splits
