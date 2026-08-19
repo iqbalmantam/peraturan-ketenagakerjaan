@@ -52,17 +52,15 @@ try:
 except Exception:
   pass
 
-# Fungsi Pemilih Model Pintar (Aman dari model khusus audio/terms)
+# Fungsi Pemilih Model Pintar
 @st.cache_data(show_spinner=False)
 def get_safe_model(api_key):
     try:
         client = Groq(api_key=api_key)
         models = client.models.list().data
-        # Cari model llama standar yang pasti terbuka
         for m in models:
             if "llama-3.1-8b-instant" in m.id or "llama3-8b" in m.id:
                 return m.id
-        # Fallback ke model teks apa saja yang valid
         for m in models:
             if "whisper" not in m.id and "tts" not in m.id and "orpheus" not in m.id and "vision" not in m.id:
                 return m.id
@@ -74,7 +72,7 @@ def get_safe_model(api_key):
 st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
 st.markdown(
     "Asisten cerdas untuk menjawab pertanyaan seputar aturan, SOP, dan"
-    " kebijakan perusahaan."
+    " kebijakan perusahaan dari seluruh isi dokumen (52 Halaman)."
 )
 
 # Inisialisasi Sesi State untuk Penyimpanan Vektor
@@ -94,7 +92,7 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memuat dokumen peraturan perusahaan secara otomatis..."):
+    with st.spinner("Memproses seluruh 52 halaman dokumen perusahaan..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
@@ -118,15 +116,19 @@ with tab1:
         temperature=0.1,
         max_tokens=1024,
     )
+    
+    # --- PENGATURAN RETRIEVER MENYELURUH (MMR) ---
+    # Menggunakan search_type="mmr" agar pencarian mencakup berbagai topik dari 52 halaman secara merata
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 4}
+        search_type="mmr",
+        search_kwargs={"k": 10, "fetch_k": 20}
     )
 
     def format_docs(docs):
       return "\n\n".join(doc.page_content for doc in docs)
 
     template = """Anda adalah asisten HR yang ramah dan profesional.
-Gunakan konteks dokumen kebijakan perusahaan berikut untuk menjawab pertanyaan.
+Gunakan konteks dokumen kebijakan perusahaan (52 halaman) berikut untuk menjawab pertanyaan secara rinci dan akurat.
 Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.
 
 Konteks:
@@ -140,7 +142,7 @@ Jawaban:"""
     rag_chain = prompt | llm | StrOutputParser()
 
     user_query = st.chat_input(
-        "Tanyakan tentang aturan cuti, klaim, atau SOP perusahaan..."
+        "Tanyakan tentang aturan cuti, PHK, klaim, atau SOP perusahaan..."
     )
 
     if user_query:
@@ -148,7 +150,7 @@ Jawaban:"""
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban dalam dokumen..."):
+        with st.spinner("Mencari jawaban ke seluruh halaman dokumen..."):
           try:
             source_docs = retriever.invoke(user_query)
             context_text = format_docs(source_docs)
@@ -160,7 +162,7 @@ Jawaban:"""
 
             st.markdown(answer)
 
-            with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
+            with st.expander("📚 Lihat Sumber Dokumen (Citation dari Berbagai Halaman)"):
               for i, doc in enumerate(source_docs):
                 page_num = doc.metadata.get("page", 0)
                 st.markdown(f"**Sumber {i+1} (Halaman {page_num + 1}):**")
