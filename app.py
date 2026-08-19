@@ -12,7 +12,7 @@ except ImportError:
 # ---------------------------------------------
 
 import streamlit as st
-from groq import Groq  # Import tambahan untuk auto-discovery model
+from groq import Groq
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.output_parsers import StrOutputParser
@@ -62,28 +62,26 @@ def get_best_active_model(api_key):
         models_data = client.models.list().data
         available_models = [m.id for m in models_data]
         
-        # Urutan prioritas model dari yang tercerdas hingga standar
+        # Urutan prioritas model
         priorities = [
             "llama-3.3-70b-versatile",
             "llama-3.1-70b-versatile",
             "llama-3.1-8b-instant",
-            "llama-3.2-3b-preview",
-            "llama-3.2-1b-preview",
+            "llama3-70b-8192",
+            "llama3-8b-8192",
             "mixtral-8x7b-32768",
             "gemma2-9b-it"
         ]
         
-        # Cek dan pilih model terbaik yang tersedia di akun Anda
         for p in priorities:
             if p in available_models:
                 return p
                 
-        # Jika prioritas tidak ada, ambil model teks apa saja yang tersedia
         for model in available_models:
             if "whisper" not in model.lower() and "vision" not in model.lower():
                 return model
                 
-        return "llama-3.1-8b-instant" # Fallback mutlak
+        return "llama-3.1-8b-instant" 
     except Exception:
         return "llama-3.1-8b-instant"
 
@@ -127,22 +125,22 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    # --- MENDAPATKAN MODEL TERBAIK SECARA OTOMATIS ---
     best_model_id = get_best_active_model(groq_api_key)
     
+    # --- FIX UNTUK LENGTH ERROR (MAX TOKENS) ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=best_model_id,
         temperature=0.1,
+        max_tokens=1024, # Membatasi panjang jawaban agar sisa memori cukup untuk membaca PDF
     )
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 3}
+        search_kwargs={"k": 4} # Mengambil 4 potongan dokumen agar lebih akurat
     )
 
     def format_docs(docs):
       return "\n\n".join(doc.page_content for doc in docs)
 
-    # Prompt text murni (Sangat aman dari BadRequest)
     template = """Anda adalah asisten HR yang ramah dan profesional.
 Gunakan konteks dokumen kebijakan perusahaan berikut untuk menjawab pertanyaan.
 Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.
@@ -155,8 +153,6 @@ Pertanyaan: {question}
 Jawaban:"""
     
     prompt = PromptTemplate.from_template(template)
-    
-    # Rantai pemrosesan yang simpel dan stabil
     rag_chain = prompt | llm | StrOutputParser()
 
     user_query = st.chat_input(
@@ -173,7 +169,6 @@ Jawaban:"""
             source_docs = retriever.invoke(user_query)
             context_text = format_docs(source_docs)
 
-            # Menghasilkan jawaban
             answer = rag_chain.invoke({
                 "context": context_text,
                 "question": user_query
