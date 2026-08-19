@@ -12,11 +12,10 @@ except ImportError:
 # ---------------------------------------------
 
 import streamlit as st
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -94,32 +93,35 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    # Menggunakan Mixtral (Sangat tangguh, jarang terkena BadRequestError)
+    # Model yang paling andal dan ringan
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name="mixtral-8x7b-32768",
+        model_name="llama3-8b-8192",
         temperature=0.1,
     )
     retriever = st.session_state.vector_store.as_retriever(
         search_kwargs={"k": 3}
     )
 
-    # Menggunakan format ChatPromptTemplate bawaan standar Langchain
-    system_prompt = (
-        "Anda adalah asisten HR yang ramah dan profesional.\n"
-        "Gunakan konteks potongan dokumen kebijakan perusahaan berikut untuk menjawab pertanyaan.\n"
-        "Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.\n"
-        "Sertakan kutipan referensi halaman dokumen jika tersedia pada konteks.\n\n"
-        "Konteks:\n{context}"
-    )
+    def format_docs(docs):
+      return "\n\n".join(doc.page_content for doc in docs)
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{input}"),
-    ])
+    # Prompt text murni (Sangat aman dari BadRequest)
+    template = """Anda adalah asisten HR yang ramah dan profesional.
+Gunakan konteks dokumen kebijakan perusahaan berikut untuk menjawab pertanyaan.
+Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.
 
-    question_answer_chain = create_stuff_documents_chain(llm, prompt)
-    rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+Konteks:
+{context}
+
+Pertanyaan: {question}
+
+Jawaban:"""
+    
+    prompt = PromptTemplate.from_template(template)
+    
+    # Rantai pemrosesan yang sangat simpel tanpa modul 'chains'
+    rag_chain = prompt | llm | StrOutputParser()
 
     user_query = st.chat_input(
         "Tanyakan tentang aturan cuti, klaim, atau SOP perusahaan..."
@@ -132,10 +134,14 @@ with tab1:
       with st.chat_message("assistant"):
         with st.spinner("Mencari jawaban dalam dokumen..."):
           try:
-            # Eksekusi RAG Chain yang aman
-            response = rag_chain.invoke({"input": user_query})
-            answer = response["answer"]
-            source_docs = response["context"]
+            source_docs = retriever.invoke(user_query)
+            context_text = format_docs(source_docs)
+
+            # Menghasilkan jawaban
+            answer = rag_chain.invoke({
+                "context": context_text,
+                "question": user_query
+            })
 
             st.markdown(answer)
 
@@ -147,8 +153,7 @@ with tab1:
                 st.markdown("---")
           except Exception as e:
             st.error(
-                "Masa tunggu API Groq habis atau terjadi kesalahan format. Mohon"
-                f" ulangi pertanyaan Anda. (Detail: {e})"
+                f"Terjadi kesalahan saat memproses jawaban dari AI. Detail: {e}"
             )
   else:
     if not groq_api_key:
