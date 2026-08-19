@@ -71,7 +71,7 @@ def get_safe_model(api_key):
 st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
 st.markdown(
     "Asisten cerdas untuk menjawab pertanyaan seputar aturan, SOP, dan"
-    " kebijakan perusahaan dari seluruh isi dokumen."
+    " kebijakan perusahaan berdasarkan dokumen resmi."
 )
 
 # Inisialisasi Sesi State
@@ -93,17 +93,24 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memproses seluruh dokumen peraturan perusahaan..."):
+    with st.spinner("Memproses seluruh dokumen peraturan perusahaan dengan model multilingual..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
+        
+        # Chunking optimal untuk bahasa Indonesia (konteks kalimat tidak terpotong)
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=100
+            chunk_size=1200, 
+            chunk_overlap=200,
+            add_start_index=True
         )
         splits = text_splitter.split_documents(docs)
         st.session_state.raw_splits = splits
         
-        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        # Menggunakan Embedding Multilingual agar akurat mendeteksi sinonim & bahasa Indonesia
+        embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        )
         st.session_state.vector_store = Chroma.from_documents(
             documents=splits, embedding=embeddings
         )
@@ -117,18 +124,20 @@ with tab1:
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.0,
-        max_tokens=1000,
+        max_tokens=1500,
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
-                "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan. "
-                "DILARANG KERAS mengarang, menebak-nebak, atau membuat-buat informasi yang tidak tertulis secara nyata di dalam teks konteks. "
-                "Jika informasi tidak ditemukan di dalam teks, katakan dengan jujur bahwa informasi tersebut tidak tersedia di dokumen. "
-                "Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi dan profesional."
+                "Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang sangat teliti, profesional, dan jujur. "
+                "Jawablah pertanyaan karyawan HANYA berdasarkan konteks dokumen resmi perusahaan yang diberikan. "
+                "\n\nATURAN MUTLAK:"
+                "1. DILARANG KERAS mengarang, menebak-nebak, atau membuat informasi yang tidak tertulis secara nyata di dalam teks konteks."
+                "2. Jika informasi tidak ditemukan di dalam teks, katakan dengan jujur bahwa informasi tersebut tidak tersedia di dalam dokumen."
+                "3. Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi dan profesional."
+                "4. Jika ada rujukan pasal, bab, atau ketentuan angka (hari, persentase, nominal), pastikan akurat sesuai teks."
             ),
         ),
         ("human", "Konteks Dokumen Resmi:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -145,103 +154,38 @@ with tab1:
       with st.chat_message("assistant"):
         with st.spinner("Mencari jawaban akurat di dokumen..."):
           try:
-            ql = user_query.lower()
+            # Menggunakan MMR Retriever untuk hasil pencarian yang kaya, luas, dan minim duplikasi
+            retriever = st.session_state.vector_store.as_retriever(
+                search_type="mmr",
+                search_kwargs={
+                    "k": 6,          # Ambil 6 potongan dokumen terbaik
+                    "fetch_k": 20    # Evaluasi 20 kandidat teratas dulu untuk akurasi maksimal
+                }
+            )
+            source_docs = retriever.invoke(user_query)
             
-            # --- 1. DIRECT OVERRIDE HANDLER UNTUK PHK ---
-            if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
-              phk_response = """Berikut adalah ringkasan ketentuan mengenai Pemutusan Hubungan Kerja (PHK) berdasarkan dokumen Peraturan Perusahaan PT CJ Logistics Service Indonesia (Bab X, Pasal 52 sampai dengan Pasal 62):
-
-**1. Prinsip Umum (Pasal 52)**
-* Perusahaan senantiasa berupaya sedapat-dapatnya untuk mencegah terjadinya Pemutusan Hubungan Kerja (PHK).  
-* Dalam keadaan memaksa yang mengakibatkan PHK, pengusaha akan bertindak dengan mengindahkan undang-undang yang berlaku.  
-* Putusnya hubungan kerja antara Pengusaha dan Pekerja dapat diakibatkan oleh berbagai hal, di antaranya:  
-  * Pekerja meninggal dunia.  
-  * Pekerja mengundurkan diri.  
-  * Berakhirnya masa perjanjian kerja.  
-  * Pekerja tidak memenuhi syarat pada masa percobaan.  
-  * Masa sakit yang berkepanjangan.  
-  * Pembebasan tugas.  
-  * Pemberhentian karena lanjut usia.  
-  * Pekerja tidak mencapai prestasi kerja yang ditetapkan oleh Perusahaan.  
-  * Restrukturisasi organisasi Perusahaan.  
-  * Ditahan oleh pihak yang berwajib.  
-  * Pelanggaran terhadap Peraturan Perusahaan.  
-  * Perusahaan melakukan efisiensi.  
-  * Perusahaan tutup akibat mengalami kerugian terus-menerus selama 2 (dua) tahun atau peristiwa force majeure.  
-  * Perusahaan dalam keadaan penundaan kewajiban pembayaran utang.  
-  * Perusahaan pailit.  
-  * Adanya putusan Pengadilan Hubungan Industrial.  
-  * Pekerja/buruh mangkir selama 5 (lima) hari kerja atau lebih berturut-turut.  
-
-**2. Ketentuan Khusus Berdasarkan Kategori (Pasal 53–61)**
-* **Masa Percobaan (Pasal 53):** Pengusaha berhak melakukan pemutusan hubungan kerja sewaktu-waktu selama masa percobaan jika pekerja dianggap tidak memenuhi syarat, dan PHK pada masa ini tidak disertai dengan pemberian imbalan, uang jasa, maupun pesangon.  
-* **Meninggal Dunia (Pasal 54):** Meninggalnya pekerja memutuskan hubungan kerja secara otomatis. Jika disebabkan kecelakaan, ahli waris diberikan santunan dan hak BPJS; jika bukan karena kecelakaan, ahli waris diberikan hak serta Sumbangan Kedukaan.  
-* **Pengunduran Diri (Pasal 55):** Permohonan pengunduran diri wajib diajukan secara tertulis selambat-lambatnya 1 (satu) bulan sebelumnya dengan tetap menjalankan fungsi secara penuh. Pekerja yang mangkir 5 hari atau lebih berturut-turut tanpa pemberitahuan dan telah dipanggil secara patut 2 kali dapat dikualifikasikan mengundurkan diri. Pekerja yang mengundurkan diri tidak wajib diberikan uang pesangon, tetapi diberikan uang penggantian hak dan uang pisah sesuai masa kerjanya.  
-* **Berakhirnya PKWT / Kontrak (Pasal 56):** Hubungan kerja berakhir sesuai tanggal dalam perjanjian, di mana pengusaha wajib memberikan uang kompensasi kepada pekerja sesuai ketentuan peraturan perundang-undangan.  
-* **Sakit Berkepanjangan (Pasal 57):** Pengusaha dapat memutuskan hubungan kerja setelah pekerja menderita sakit terus-menerus melebihi 12 bulan berdasarkan surat keterangan dokter.  
-* **Pembebasan Tugas (Pasal 58):** Perusahaan dapat mengambil tindakan PHK jika pekerja dijatuhi hukuman kurungan oleh pengadilan karena melanggar hukum/kesalahan besar atau melakukan pelanggaran tata tertib secara berulang setelah diberikan sanksi.  
-* **Pemberhentian Umum (Pasal 59):** Dapat dilakukan atas prakarsa pengusaha akibat program reorganisasi, rasionalisasi, atau perubahan sistem kerja setelah dimusyawarahkan, dengan pemberian pesangon atau uang jasa sesuai ketentuan.  
-* **Lanjut Usia / Pensiun (Pasal 60):** Pekerja ditetapkan pensiun dan diberhentikan dengan hormat saat berusia 55 tahun, serta berhak menerima dana BPJS Ketenagakerjaan dan hak-hak sesuai peraturan yang berlaku.  
-* **Hak Pesangon (Pasal 61):** Pekerja tetap yang mengalami PHK akan menerima pembayaran uang pesangon, uang penghargaan masa kerja, dan uang penggantian hak yang ditetapkan sesuai dengan peraturan perundang-undangan.  
-
-**3. Hutang Pekerja Terkait PHK (Pasal 62)**
-* Sehubungan dengan PHK, hutang-hutang pekerja kepada pengusaha dengan bukti yang sah akan diperhitungkan sekaligus dari uang pesangon, uang penghargaan masa kerja, uang penggantian hak, uang pisah, dan/atau uang kompensasi.  
-* Jika dana hak-hak tersebut tidak mencukupi untuk melunasi hutang, PHK tidak secara otomatis membebaskan pekerja dari sisa hutangnya kepada pengusaha."""
-              st.markdown(phk_response)
+            seen_texts = set()
+            unique_docs = []
+            for d in source_docs:
+                if d.page_content not in seen_texts:
+                    seen_texts.add(d.page_content)
+                    unique_docs.append(d)
             
-            # --- 2. HANDLER CUTI (Blokir Pasal 8 Pengawasan agar tidak salah tarik) ---
-            elif any(k in ql for k in ["cuti", "libur", "izin", "istirahat"]):
-              leave_docs = [
-                  d for d in st.session_state.raw_splits
-                  if any(term in d.page_content.lower() for term in ["cuti", "istirahat", "izin", "libur"])
-                  and "pasal 8" not in d.page_content.lower()
-                  and "tanggung jawab pengawasan" not in d.page_content.lower()
-              ]
-              
-              if leave_docs:
-                seen_texts = set()
-                unique_leave = []
-                for d in leave_docs:
-                    if d.page_content not in seen_texts:
-                        seen_texts.add(d.page_content)
-                        unique_leave.append(d)
-                context_text = "\n\n".join([d.page_content for d in unique_leave[:5]])
-              else:
-                context_text = "Informasi mengenai cuti tidak ditemukan di dalam dokumen."
+            context_text = "\n\n".join([d.page_content for d in unique_docs])
 
-              messages = chat_prompt.format_messages(
-                  context=context_text, question=user_query
-              )
-              response = llm.invoke(messages)
-              st.markdown(response.content)
-
-            # --- 3. STANDARD RETRIEVER UNTUK TOPIK LAIN ---
-            else:
-              retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 4})
-              source_docs = retriever.invoke(user_query)
-              
-              seen_texts = set()
-              unique_docs = []
-              for d in source_docs:
-                  if d.page_content not in seen_texts:
-                      seen_texts.add(d.page_content)
-                      unique_docs.append(d)
-              
-              context_text = "\n\n".join([d.page_content for d in unique_docs])
-
-              messages = chat_prompt.format_messages(
-                  context=context_text, question=user_query
-              )
-              response = llm.invoke(messages)
-              st.markdown(response.content)
+            messages = chat_prompt.format_messages(
+                context=context_text, question=user_query
+            )
+            response = llm.invoke(messages)
+            st.markdown(response.content)
 
           except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses jawaban: {e}")
-  else:
-    if not groq_api_key:
-      st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
-    else:
-      st.info("ℹ️ File dokumen belum terdeteksi. Pastikan file sudah di-commit di GitHub.")
+      else:
+        if not groq_api_key:
+          st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
+        else:
+          st.info("ℹ️ File dokumen belum terdeteksi. Pastikan file sudah di-commit di GitHub.")
 
 # --- TAB 2: DOWNLOAD DOKUMEN ---
 with tab2:
@@ -280,22 +224,25 @@ with tab3:
       elif not uploaded_file:
         st.error("❌ Mohon pilih file PDF terlebih dahulu.")
       else:
-        with st.spinner("Sedang memproses dokumen baru..."):
+        with st.spinner("Sedang memproses dokumen baru dengan model multilingual..."):
           try:
             with open(TARGET_PDF, "wb") as f:
               f.write(uploaded_file.getbuffer())
 
             loader = PyPDFLoader(TARGET_PDF)
             docs = loader.load()
-            st.session_state.raw_docs = docs
             
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000, chunk_overlap=100
+                chunk_size=1200, 
+                chunk_overlap=200,
+                add_start_index=True
             )
             splits = text_splitter.split_documents(docs)
             st.session_state.raw_splits = splits
 
-            embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+            embeddings = HuggingFaceEmbeddings(
+                model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+            )
             vector_store = Chroma.from_documents(
                 documents=splits, embedding=embeddings
             )
@@ -304,11 +251,11 @@ with tab3:
             st.success("✅ Dokumen berhasil diperbarui! Silakan kembali ke tab 'Chat Karyawan'.")
           except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses dokumen: {e}")
-  else:
-    if input_password:
-      st.error("❌ Password salah!")
-    else:
-      st.info("ℹ️ Masukkan password admin untuk mengakses panel manajemen.")
+      else:
+        if input_password:
+          st.error("❌ Password salah!")
+        else:
+          st.info("ℹ️ Masukkan password admin untuk mengakses panel manajemen.")
 
 # Watermark di bawah halaman utama
 st.markdown("---")
