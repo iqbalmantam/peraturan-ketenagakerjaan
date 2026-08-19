@@ -37,8 +37,8 @@ if user_query:
             st.error("File PDF tidak ditemukan.")
         else:
             try:
-                # Kunci ke model 1.5-flash (Ini yang paling stabil saat ini)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # Diperbarui menggunakan gemini-2.0-flash yang aktif dan stabil
+                model = genai.GenerativeModel('gemini-2.0-flash')
                 
                 # Mengirim prompt yang ringkas
                 prompt = f"Berdasarkan dokumen ini, jawablah: {user_query}. Jika tidak ada, katakan tidak tahu. Dokumen: {pdf_text[:15000]}"
