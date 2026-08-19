@@ -77,6 +77,8 @@ st.markdown(
 # Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
+if "raw_docs" not in st.session_state:
+  st.session_state.raw_docs = []
 if "raw_splits" not in st.session_state:
   st.session_state.raw_splits = []
 
@@ -97,6 +99,8 @@ with tab1:
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
+        st.session_state.raw_docs = docs
+        
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000, chunk_overlap=100
         )
@@ -117,7 +121,7 @@ with tab1:
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.0,
-        max_tokens=1000,
+        max_tokens=1200,
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -146,7 +150,7 @@ with tab1:
           try:
             ql = user_query.lower()
             
-            # --- DIRECT OVERRIDE HANDLER UNTUK PHK ---
+            # --- 1. DIRECT OVERRIDE HANDLER UNTUK PHK ---
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
               phk_response = """Berikut adalah ringkasan ketentuan mengenai Pemutusan Hubungan Kerja (PHK) berdasarkan dokumen Peraturan Perusahaan PT CJ Logistics Service Indonesia (Bab X, Pasal 52 sampai dengan Pasal 62):
 
@@ -187,11 +191,32 @@ with tab1:
 * Sehubungan dengan PHK, hutang-hutang pekerja kepada pengusaha dengan bukti yang sah akan diperhitungkan sekaligus dari uang pesangon, uang penghargaan masa kerja, uang penggantian hak, uang pisah, dan/atau uang kompensasi.  
 * Jika dana hak-hak tersebut tidak mencukupi untuk melunasi hutang, PHK tidak secara otomatis membebaskan pekerja dari sisa hutangnya kepada pengusaha."""
               st.markdown(phk_response)
+            
+            # --- 2. DEDICATED HANDLER UNTUK CUTI & IZIN ---
+            elif any(k in ql for k in ["cuti", "libur", "istirahat", "izin"]):
+              leave_texts = []
+              for d in st.session_state.raw_docs:
+                c_low = d.page_content.lower()
+                if any(term in c_low for term in ["cuti", "istirahat", "izin", "libur"]):
+                  leave_texts.append(d.page_content)
+              
+              if leave_texts:
+                unique_leave = list(dict.fromkeys(leave_texts))
+                context_text = "\n\n".join(unique_leave[:6])
+              else:
+                context_text = "Informasi mengenai cuti tidak ditemukan di dalam dokumen."
+
+              messages = chat_prompt.format_messages(
+                  context=context_text, question=user_query
+              )
+              response = llm.invoke(messages)
+              st.markdown(response.content)
+
+            # --- 3. STANDARD RETRIEVER UNTUK TOPIK LAIN ---
             else:
               retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
               source_docs = retriever.invoke(user_query)
               
-              # --- DEDUPLIKASI KONTEN (Mencegah Looping Teks) ---
               seen_texts = set()
               unique_docs = []
               for d in source_docs:
@@ -259,6 +284,8 @@ with tab3:
 
             loader = PyPDFLoader(TARGET_PDF)
             docs = loader.load()
+            st.session_state.raw_docs = docs
+            
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000, chunk_overlap=100
             )
