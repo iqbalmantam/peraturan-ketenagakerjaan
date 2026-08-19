@@ -50,7 +50,7 @@ try:
   if "ADMIN_PASSWORD" in st.secrets:
     admin_pass_secret = st.secrets["ADMIN_PASSWORD"]
   elif "general" in st.secrets and "ADMIN_PASSWORD" in st.secrets["general"]:
-    admin_pass_secret = st.secrets["ADMIN_PASSWORD"]
+    admin_pass_secret = st.secrets["general"]["ADMIN_PASSWORD"]
 except Exception:
   pass
 
@@ -94,10 +94,10 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    # Menggunakan model llama-3.1-70b-versatile yang stabil
+    # Menggunakan model llama-3.1-8b-instant yang sangat stabil di Groq
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name="llama-3.1-70b-versatile",
+        model_name="llama-3.1-8b-instant",
         temperature=0.1,
     )
     retriever = st.session_state.vector_store.as_retriever(
