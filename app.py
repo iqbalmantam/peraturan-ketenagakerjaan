@@ -77,6 +77,8 @@ st.markdown(
 # Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
+if "raw_splits" not in st.session_state:
+  st.session_state.raw_splits = []
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
@@ -100,6 +102,9 @@ with tab1:
         )
         splits = text_splitter.split_documents(docs)
         
+        # Simpan seluruh pecahan teks untuk pencarian langsung
+        st.session_state.raw_splits = splits
+        
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         st.session_state.vector_store = Chroma.from_documents(
             documents=splits, embedding=embeddings
@@ -110,16 +115,15 @@ with tab1:
   if st.session_state.vector_store is not None and groq_api_key:
     selected_model = get_safe_model(groq_api_key)
     
-    # --- DIBATASI max_tokens=500 AGAR TIDAK TERJADI LOOPING TEKS ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.1,
-        max_tokens=500,
+        max_tokens=1024,
     )
     
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 10}
+        search_kwargs={"k": 6}
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -127,9 +131,9 @@ with tab1:
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan. "
-                "Berikan penjelasan yang padat, terstruktur, dan langsung pada pokok bahasan. "
-                "DILARANG KERAS mengulang-ulang kalimat atau melakukan looping teks."
+                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan perusahaan yang diberikan di bawah ini secara lengkap, jelas, dan profesional dalam bentuk poin-poin yang rapi. "
+                "Jika informasi tentang topik tersebut terdapat dalam konteks, jelaskan selengkap-lengkapnya. "
+                "Jangan katakan informasi tidak ditemukan jika teks konteks memuat informasi yang relevan."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -144,27 +148,29 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban akurat dari dokumen..."):
+        with st.spinner("Mencari jawaban akurat di dalam program..."):
           try:
-            initial_docs = retriever.invoke(user_query)
             ql = user_query.lower()
-            scored_docs = []
+            source_docs = retriever.invoke(user_query)
             
-            # Keyword boosting untuk memprioritaskan Halaman 6 (Definisi PHK & Pesangon)
-            for doc in initial_docs:
-                score = 0
-                content_lower = doc.page_content.lower()
-                
-                if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
-                    if any(k in content_lower for k in ["pemutusan", "phk", "pesangon", "pengakhiran", "uang pisah"]):
-                        score += 100
-                
-                scored_docs.append((score, doc))
-            
-            scored_docs.sort(key=lambda x: x[0], reverse=True)
-            source_docs = [doc for score, doc in scored_docs[:5]]
-            if not source_docs:
-                source_docs = initial_docs[:5]
+            # --- SMART OVERRIDE: Paksa ambil Bab X (PHK / Pasal 52-62) jika user menanyakan PHK ---
+            if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
+                phk_chunks = [
+                    doc for doc in st.session_state.raw_splits 
+                    if any(term in doc.page_content.lower() for term in ["pasal 52", "pasal 61", "pemutusan hubungan kerja", "pesangon"])
+                ]
+                if phk_chunks:
+                    source_docs = phk_chunks[:6] + source_docs
+
+            # Hilangkan duplikasi dokumen
+            seen = set()
+            unique_docs = []
+            for d in source_docs:
+                identifier = (d.metadata.get("page"), d.page_content[:40])
+                if identifier not in seen:
+                    seen.add(identifier)
+                    unique_docs.append(d)
+            source_docs = unique_docs[:6]
 
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
@@ -185,7 +191,7 @@ with tab1:
                   st.markdown("---")
           except Exception as e:
             st.error(
-                f"Terjadi kesalahan saat memproses jawaban dari AI. Detail: {e}"
+                f"Terjadi kesalahan saat memproses jawaban di program. Detail: {e}"
             )
   else:
     if not groq_api_key:
@@ -260,6 +266,7 @@ with tab3:
                 chunk_size=1000, chunk_overlap=200
             )
             splits = text_splitter.split_documents(docs)
+            st.session_state.raw_splits = splits
 
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             vector_store = Chroma.from_documents(
