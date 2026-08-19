@@ -1,70 +1,105 @@
 import os
-try:
-    import pysqlite3
-    import sys
-    sys.modules["sqlite3"] = pysqlite3
-except ImportError:
-    pass
-
 import streamlit as st
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.vectorstores import Chroma
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_groq import ChatGroq
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from groq import Groq
+import google.generativeai as genai
+from pypdf import PdfReader
 
-st.set_page_config(page_title="HR Assistant", layout="wide")
+# Konfigurasi Halaman Streamlit
+st.set_page_config(page_title="HR Policy Assistant (Gemini)", page_icon="🏢", layout="wide")
 
-# Konfigurasi API
-groq_api_key = st.secrets.get("GROQ_API_KEY") or (st.secrets.get("general") or {}).get("GROQ_API_KEY")
+# Sembunyikan Sidebar
+st.markdown("<style>[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
+
+# Ambil API Key Gemini dari Streamlit Secrets
+gemini_api_key = st.secrets.get("GEMINI_API_KEY") or (st.secrets.get("general") or {}).get("GEMINI_API_KEY")
+admin_pass_secret = st.secrets.get("ADMIN_PASSWORD") or (st.secrets.get("general") or {}).get("ADMIN_PASSWORD") or "2273"
+
+if gemini_api_key:
+    genai.configure(api_key=gemini_api_key)
+
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
-# --- FUNGSI DETEKSI MODEL OTOMATIS (Mencegah Error 404) ---
-@st.cache_data(show_spinner=False)
-def get_best_model(api_key):
-    try:
-        client = Groq(api_key=api_key)
-        models = client.models.list().data
-        # Mencari model yang paling umum digunakan
-        for m in models:
-            if "llama3-8b" in m.id: return m.id
-        # Jika tidak ada, ambil model pertama yang tersedia
-        return models[0].id
-    except:
-        return "llama3-8b-8192" # Fallback standar
+st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
+st.markdown("Asisten cerdas berbasis Google Gemini untuk menjawab aturan perusahaan secara akurat.")
 
-# --- FUNGSI UTAMA ---
-if "vector_store" not in st.session_state: st.session_state.vector_store = None
+tab1, tab2, tab3 = st.tabs(["💬 Chat Karyawan", "📥 Download Dokumen", "🔐 Mode Admin"])
 
-st.title("🏢 HR Policy Assistant")
+# Fungsi membaca teks PDF secara efisien (Hemat RAM)
+@st.cache_resource
+def load_pdf_text(pdf_path):
+    if not os.path.exists(pdf_path):
+        return ""
+    reader = PdfReader(pdf_path)
+    text = ""
+    for page in reader.pages:
+        extracted = page.extract_text()
+        if extracted:
+            text += extracted + "\n"
+    return text
 
-if not groq_api_key:
-    st.error("API Key belum diset.")
-else:
-    # Indexing Dokumen (hanya sekali)
-    if st.session_state.vector_store is None and os.path.exists(TARGET_PDF):
-        with st.spinner("Indexing dokumen..."):
-            loader = PyPDFLoader(TARGET_PDF)
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-            splits = text_splitter.split_documents(loader.load())
-            embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-            st.session_state.vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
+pdf_content = load_pdf_text(TARGET_PDF)
 
-    # Chat
-    user_query = st.chat_input("Tanya aturan perusahaan...")
-    if user_query and st.session_state.vector_store:
+# --- TAB 1: CHAT KARYAWAN ---
+with tab1:
+    st.subheader("💬 Tanya Jawab Kebijakan Perusahaan")
+    
+    user_query = st.chat_input("Tanyakan tentang aturan cuti, PHK, klaim, dll...")
+    
+    if user_query:
         st.chat_message("user").markdown(user_query)
+        
         with st.chat_message("assistant"):
-            try:
-                # Ambil 2 chunk saja agar sangat ringan (mencegah Error 400)
-                docs = st.session_state.vector_store.as_retriever(search_kwargs={"k": 2}).invoke(user_query)
-                context = " ".join([d.page_content for d in docs])[:1000] # Maksimal 1000 karakter
-                
-                llm = ChatGroq(groq_api_key=groq_api_key, model_name=get_best_model(groq_api_key), temperature=0, max_tokens=300)
-                
-                response = llm.invoke(f"Jawab pertanyaan berikut berdasarkan konteks: {context}\n\nPertanyaan: {user_query}")
-                st.markdown(response.content)
-            except Exception as e:
-                st.error(f"Error: {e}")
+            with st.spinner("Gemini sedang menganalisis dokumen perusahaan..."):
+                try:
+                    if not gemini_api_key:
+                        st.error("⚠️ `GEMINI_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
+                    elif not pdf_content:
+                        st.error(f"⚠️ File PDF `{TARGET_PDF}` tidak ditemukan di repositori.")
+                    else:
+                        # Menggunakan model Gemini yang cepat dan stabil
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        
+                        prompt = f"""
+                        Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional, teliti, dan ramah.
+                        Jawablah pertanyaan karyawan HANYA berdasarkan dokumen Peraturan Perusahaan di bawah ini.
+                        Jika informasi tidak ditemukan di dalam teks, katakan dengan jujur bahwa informasi tersebut tidak tersedia.
+                        Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
+
+                        --- DOKUMEN PERATURAN PERUSAHAAN ---
+                        {pdf_content}
+                        ------------------------------------
+
+                        Pertanyaan Karyawan: {user_query}
+                        """
+                        
+                        response = model.generate_content(prompt)
+                        st.markdown(response.text)
+                except Exception as e:
+                    st.error(f"Terjadi kesalahan: {e}")
+
+# --- TAB 2: DOWNLOAD DOKUMEN ---
+with tab2:
+    st.subheader("📥 Unduh Peraturan Perusahaan")
+    if os.path.exists(TARGET_PDF):
+        with open(TARGET_PDF, "rb") as f:
+            st.download_button(
+                label="📥 Download Peraturan Perusahaan (PDF)",
+                data=f.read(),
+                file_name=TARGET_PDF,
+                mime="application/pdf",
+            )
+    else:
+        st.warning(f"⚠️ File `{TARGET_PDF}` tidak ditemukan.")
+
+# --- TAB 3: MODE ADMIN ---
+with tab3:
+    st.subheader("🔐 Panel Admin")
+    pwd = st.text_input("Masukkan Password Admin:", type="password")
+    if pwd == admin_pass_secret:
+        uploaded_file = st.file_uploader("Upload PDF Peraturan Baru", type=["pdf"])
+        if uploaded_file:
+            with open(TARGET_PDF, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.success("File berhasil diunggah! Silakan refresh halaman.")
+
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
