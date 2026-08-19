@@ -77,8 +77,8 @@ st.markdown(
 # Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
-if "raw_docs" not in st.session_state:
-  st.session_state.raw_docs = []
+if "raw_splits" not in st.session_state:
+  st.session_state.raw_splits = []
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
@@ -93,18 +93,17 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memproses seluruh dokumen peraturan perusahaan (52 Halaman)..."):
+    with st.spinner("Memproses seluruh dokumen peraturan perusahaan..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
-        
-        # Simpan dokumen mentah per halaman untuk ekstraksi bab presisi
-        st.session_state.raw_docs = docs
-        
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=200
+            chunk_size=1000, chunk_overlap=100
         )
         splits = text_splitter.split_documents(docs)
+        
+        # Simpan teks mentah untuk pencarian langsung
+        st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         st.session_state.vector_store = Chroma.from_documents(
@@ -119,12 +118,8 @@ with tab1:
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
-        temperature=0.0,
-        max_tokens=1500,
-    )
-    
-    retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 5}
+        temperature=0.1,
+        max_tokens=1000,
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -132,13 +127,9 @@ with tab1:
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan di bawah ini. "
-                "DILARANG KERAS menggunakan Pasal 6 atau informasi penggolongan karyawan untuk menjawab pertanyaan tentang PHK. "
-                "Sajikan jawaban dengan terstruktur rapi ke dalam format berikut:\n"
-                "1. Prinsip Umum (Pasal 52)\n"
-                "2. Ketentuan Khusus Berdasarkan Kategori (Pasal 53–61)\n"
-                "3. Hutang Pekerja Terkait PHK (Pasal 62)\n"
-                "Gunakan poin-poin yang jelas dan profesional sesuai isi dokumen[cite: 1]."
+                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan. "
+                "Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi dan profesional. "
+                "Jangan mengarang informasi di luar konteks dokumen."
             ),
         ),
         ("human", "Konteks Dokumen Resmi:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -153,35 +144,31 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari pasal resmi PHK di dalam dokumen..."):
+        with st.spinner("Mencari jawaban akurat di dokumen..."):
           try:
             ql = user_query.lower()
+            source_docs = []
             
-            # --- PROGRAMMATIC CHAPTER EXTRACTION UNTUK PHK ---
+            # Filter langsung ke Bab X (PHK / Pasal 52-62) tanpa menyentuh Pasal 6
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
-                # Ambil langsung halaman-halaman yang memuat Bab X (Pasal 52 sampai 62) secara utuh
-                phk_docs = []
-                capture = False
-                for doc in st.session_state.raw_docs:
-                    content = doc.page_content
-                    if "BAB X" in content or "TERMINATION OF EMPLOYMENT" in content:
-                        capture = True
-                    if capture:
-                        phk_docs.append(doc)
-                    if "BAB XI" in content or "PENYELESAIAN KELUHAN" in content:
-                        if capture:
-                            break
-                
-                source_docs = phk_docs if phk_docs else retriever.invoke(user_query)
+                source_docs = [
+                    d for d in st.session_state.raw_splits
+                    if any(term in d.page_content.lower() for term in ["pasal 52", "pasal 53", "pasal 54", "pasal 55", "pasal 56", "pasal 57", "pasal 58", "pasal 59", "pasal 60", "pasal 61", "pasal 62", "pemutusan hubungan kerja", "pesangon"])
+                    and "pasal 6:" not in d.page_content.lower()
+                    and "penggolongan pekerja" not in d.page_content.lower()
+                ]
             elif "cuti" in ql:
                 source_docs = [
-                    doc for doc in st.session_state.raw_docs 
-                    if "cuti" in doc.page_content.lower()
-                ][:5]
-                if not source_docs:
-                    source_docs = retriever.invoke(user_query)
-            else:
+                    d for d in st.session_state.raw_splits
+                    if "cuti" in d.page_content.lower()
+                ]
+            
+            # Fallback ke retriever standar jika tidak ada filter manual
+            if not source_docs:
+                retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
                 source_docs = retriever.invoke(user_query)
+            else:
+                source_docs = source_docs[:6]
 
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
@@ -189,37 +176,22 @@ with tab1:
                 context=context_text, question=user_query
             )
             response = llm.invoke(messages)
-            answer = response.content
+            
+            # Tampilkan hasil langsung secara bersih tanpa bagian citation
+            st.markdown(response.content)
 
-            st.markdown(answer)
-
-            if source_docs:
-              with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
-                for i, doc in enumerate(source_docs):
-                  page_num = doc.metadata.get("page", 0)
-                  st.markdown(f"**Sumber {i+1} (Halaman {page_num + 1}):**[cite: 1]")
-                  st.markdown(f"> {doc.page_content[:300]}...")
-                  st.markdown("---")
           except Exception as e:
-            st.error(
-                f"Terjadi kesalahan saat memproses jawaban di program. Detail: {e}"
-            )
+            st.error(f"Terjadi kesalahan saat memproses jawaban: {e}")
   else:
     if not groq_api_key:
       st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
     else:
-      st.info(
-          "ℹ️ File dokumen belum terdeteksi. Pastikan file"
-          f" `{TARGET_PDF}` sudah di-commit dengan benar di GitHub."
-      )
+      st.info("ℹ️ File dokumen belum terdeteksi. Pastikan file sudah di-commit di GitHub.")
 
 # --- TAB 2: DOWNLOAD DOKUMEN ---
 with tab2:
   st.subheader("📥 Unduh Peraturan Perusahaan")
-  st.markdown(
-      "Anda dapat mengunduh dokumen resmi peraturan perusahaan melalui tombol di"
-      " bawah ini."
-  )
+  st.markdown("Anda dapat mengunduh dokumen resmi peraturan perusahaan melalui tombol di bawah ini.")
 
   if os.path.exists(TARGET_PDF):
     with open(TARGET_PDF, "rb") as pdf_file:
@@ -231,30 +203,20 @@ with tab2:
         mime="application/pdf",
     )
   else:
-    st.warning(
-        f"⚠️ File `{TARGET_PDF}` belum ditemukan di repositori GitHub."
-    )
+    st.warning(f"⚠️ File `{TARGET_PDF}` belum ditemukan di repositori GitHub.")
 
 # --- TAB 3: MODE ADMIN ---
 with tab3:
   st.subheader("🔐 Panel Admin")
-  input_password = st.text_input(
-      "Masukkan Password Admin:", type="password", key="admin_pass_input"
-  )
+  input_password = st.text_input("Masukkan Password Admin:", type="password", key="admin_pass_input")
 
   if input_password == admin_pass_secret:
     st.success("✅ Autentikasi Admin Berhasil!")
     st.markdown("---")
     st.subheader("📁 Perbarui Dokumen Peraturan")
-    st.markdown(
-        "Jika Anda ingin mengganti dokumen, silakan unggah file PDF baru di"
-        " bawah ini:"
-    )
-
+    
     with st.form("admin_form"):
-      uploaded_file = st.file_uploader(
-          "Pilih file PDF Peraturan/Handbook baru", type=["pdf"]
-      )
+      uploaded_file = st.file_uploader("Pilih file PDF Peraturan/Handbook baru", type=["pdf"])
       submit_btn = st.form_submit_button("Proses & Perbarui Dokumen")
 
     if submit_btn:
@@ -263,21 +225,18 @@ with tab3:
       elif not uploaded_file:
         st.error("❌ Mohon pilih file PDF terlebih dahulu.")
       else:
-        with st.spinner(
-            "Sedang memproses dokumen baru dan memperbarui indeks vektor..."
-        ):
+        with st.spinner("Sedang memproses dokumen baru..."):
           try:
             with open(TARGET_PDF, "wb") as f:
               f.write(uploaded_file.getbuffer())
 
             loader = PyPDFLoader(TARGET_PDF)
             docs = loader.load()
-            st.session_state.raw_docs = docs
-
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000, chunk_overlap=200
+                chunk_size=1000, chunk_overlap=100
             )
             splits = text_splitter.split_documents(docs)
+            st.session_state.raw_splits = splits
 
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             vector_store = Chroma.from_documents(
@@ -285,10 +244,7 @@ with tab3:
             )
             st.session_state.vector_store = vector_store
 
-            st.success(
-                "✅ Dokumen berhasil diperbarui! Silakan kembali ke tab 'Chat"
-                " Karyawan'."
-            )
+            st.success("✅ Dokumen berhasil diperbarui! Silakan kembali ke tab 'Chat Karyawan'.")
           except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses dokumen: {e}")
   else:
@@ -300,7 +256,6 @@ with tab3:
 # Watermark di bawah halaman utama
 st.markdown("---")
 st.markdown(
-    "<p style='text-align: center; color: gray; font-size: 13px;'>Developed by"
-    " <b>iqbalmantam</b></p>",
+    "<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>",
     unsafe_allow_html=True,
 )
