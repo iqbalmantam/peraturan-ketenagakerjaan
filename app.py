@@ -47,7 +47,7 @@ try:
   if "ADMIN_PASSWORD" in st.secrets:
     admin_pass_secret = st.secrets["ADMIN_PASSWORD"]
   elif "general" in st.secrets and "ADMIN_PASSWORD" in st.secrets["general"]:
-    admin_pass_secret = st.secrets["ADMIN_PASSWORD"]
+    admin_pass_secret = st.secrets["GENERAL"]["ADMIN_PASSWORD"]
 except Exception:
   pass
 
@@ -71,7 +71,7 @@ def get_safe_model(api_key):
 st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
 st.markdown(
     "Asisten cerdas untuk menjawab pertanyaan seputar aturan, SOP, dan"
-    " kebijakan perusahaan dari seluruh isi dokumen (52 Halaman)."
+    " kebijakan perusahaan dari seluruh isi dokumen."
 )
 
 # Inisialisasi Sesi State untuk Penyimpanan Vektor
@@ -91,12 +91,13 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memproses seluruh 52 halaman dokumen perusahaan..."):
+    with st.spinner("Memuat dokumen peraturan perusahaan..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
+        # Chunk size disesuaikan agar pas dan aman dari limit token
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1200, chunk_overlap=250
+            chunk_size=800, chunk_overlap=150
         )
         splits = text_splitter.split_documents(docs)
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -109,7 +110,6 @@ with tab1:
   if st.session_state.vector_store is not None and groq_api_key:
     selected_model = get_safe_model(groq_api_key)
     
-    # --- OPTIMALASI AI: Temperature 0.0 agar murni logis dan anti-looping ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
@@ -117,20 +117,19 @@ with tab1:
         max_tokens=800,
     )
     
-    # --- MENINGKATKAN KAPASITAS PENCARIAN (k=10) ---
+    # k dikembalikan ke 4 agar aman dari error context_length_exceeded
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 10}
+        search_kwargs={"k": 4}
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
-                "Anda adalah asisten HR perusahaan yang profesional, cerdas, dan akurat."
-                " Jawablah pertanyaan karyawan HANYA berdasarkan teks pasal yang ada di dalam"
-                " konteks dokumen kebijakan perusahaan. Jika informasi tidak ditemukan dalam konteks,"
-                " jawab dengan persis: 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' "
-                " DILARANG keras mengulang-ulang kalimat atau terjebak dalam pola looping."
+                "Anda adalah asisten HR perusahaan yang profesional dan akurat."
+                " Jawablah pertanyaan karyawan HANYA berdasarkan konteks dokumen kebijakan perusahaan"
+                " yang diberikan. Jika informasi tidak ada, katakan dengan persis:"
+                " 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' Dilarang mengulang-ulang kalimat."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -145,17 +144,17 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari pasal yang sesuai dari 52 halaman dokumen..."):
+        with st.spinner("Mencari jawaban dalam dokumen..."):
           try:
-            # --- PERLUASAN KATA KUNCI (QUERY EXPANSION) YANG KUAT ---
-            query_to_search = user_query
+            # Perluasan kata kunci agar istilah singkatan langsung menemukan pasal terkait
+            search_q = user_query
             ql = user_query.lower()
-            if "phk" in ql or "pemutusan" in ql or "hubungan kerja" in ql:
-                query_to_search = "pemutusan hubungan kerja PHK pesangon uang penghargaan masa kerja pengakhiran pemutusan kontrak alasan phk"
+            if "phk" in ql or "pemutusan" in ql:
+                search_q = "pemutusan hubungan kerja PHK pesangon uang penghargaan masa kerja pengakhiran"
             elif "cuti" in ql:
-                query_to_search = "cuti cuti tahunan hak cuti bersama"
+                search_q = "cuti cuti tahunan hak cuti bersama"
 
-            source_docs = retriever.invoke(query_to_search)
+            source_docs = retriever.invoke(search_q)
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
             messages = chat_prompt.format_messages(
@@ -246,7 +245,7 @@ with tab3:
             docs = loader.load()
 
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1200, chunk_overlap=250
+                chunk_size=800, chunk_overlap=150
             )
             splits = text_splitter.split_documents(docs)
 
