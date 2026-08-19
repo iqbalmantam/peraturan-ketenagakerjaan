@@ -19,79 +19,253 @@ from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# Konfigurasi Halaman
-st.set_page_config(page_title="HR Policy Q&A Assistant", page_icon="🏢", layout="wide")
-st.markdown("""<style>[data-testid="stSidebar"] {display: none;}</style>""", unsafe_allow_html=True)
+# Konfigurasi Halaman Streamlit
+st.set_page_config(
+    page_title="HR Policy Q&A Assistant", page_icon="🏢", layout="wide"
+)
 
-# --- PERBAIKAN PEMBACAAN API KEY ---
-def get_secret(key_name):
-    # Cek di root secrets, lalu di section 'general', lalu di env var
-    if key_name in st.secrets: return st.secrets[key_name]
-    if "general" in st.secrets and key_name in st.secrets["general"]: return st.secrets["general"][key_name]
-    return os.environ.get(key_name)
+# Sembunyikan Sidebar, Header, dan Footer bawaan Streamlit
+hide_streamlit_style = """
+    <style>
+    [data-testid="stSidebar"] {display: none;}
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-groq_api_key = get_secret("GROQ_API_KEY")
-admin_pass_secret = get_secret("ADMIN_PASSWORD") or "2273"
+# Ambil Konfigurasi dari Streamlit Secrets
+groq_api_key = None
+admin_pass_secret = "2273"  # Fallback default
 
-# Fungsi Auto-Discovery Model
+try:
+  if "GROQ_API_KEY" in st.secrets:
+    groq_api_key = st.secrets["GROQ_API_KEY"]
+  elif "general" in st.secrets and "GROQ_API_KEY" in st.secrets["general"]:
+    groq_api_key = st.secrets["general"]["GROQ_API_KEY"]
+
+  if "ADMIN_PASSWORD" in st.secrets:
+    admin_pass_secret = st.secrets["ADMIN_PASSWORD"]
+  elif "general" in st.secrets and "ADMIN_PASSWORD" in st.secrets["general"]:
+    admin_pass_secret = st.secrets["general"]["ADMIN_PASSWORD"]
+except Exception:
+  pass
+
+# Fungsi Pemilih Model Pintar (Aman dari model khusus audio/terms)
 @st.cache_data(show_spinner=False)
-def get_active_model(api_key):
+def get_safe_model(api_key):
     try:
         client = Groq(api_key=api_key)
         models = client.models.list().data
+        # Cari model llama standar yang pasti terbuka
         for m in models:
-            if "whisper" not in m.id and "vision" not in m.id:
+            if "llama-3.1-8b-instant" in m.id or "llama3-8b" in m.id:
+                return m.id
+        # Fallback ke model teks apa saja yang valid
+        for m in models:
+            if "whisper" not in m.id and "tts" not in m.id and "orpheus" not in m.id and "vision" not in m.id:
                 return m.id
         return "llama-3.1-8b-instant"
     except:
         return "llama-3.1-8b-instant"
 
+# Judul Aplikasi
 st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
+st.markdown(
+    "Asisten cerdas untuk menjawab pertanyaan seputar aturan, SOP, dan"
+    " kebijakan perusahaan."
+)
 
+# Inisialisasi Sesi State untuk Penyimpanan Vektor
 if "vector_store" not in st.session_state:
-    st.session_state.vector_store = None
+  st.session_state.vector_store = None
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
-tab1, tab2, tab3 = st.tabs(["💬 Chat Karyawan", "📥 Download Dokumen", "🔐 Mode Admin"])
 
-# --- TAB 1 ---
+# Gunakan Tab di Header Atas sebagai Menu Navigasi Utama
+tab1, tab2, tab3 = st.tabs(
+    ["💬 Chat Karyawan", "📥 Download Dokumen", "🔐 Mode Admin"]
+)
+
+# --- TAB 1: CHAT KARYAWAN ---
 with tab1:
-    if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-        with st.spinner("Memproses dokumen..."):
+  st.subheader("💬 Tanya Jawab Kebijakan Perusahaan")
+
+  # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
+  if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
+    with st.spinner("Memuat dokumen peraturan perusahaan secara otomatis..."):
+      try:
+        loader = PyPDFLoader(TARGET_PDF)
+        docs = loader.load()
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000, chunk_overlap=200
+        )
+        splits = text_splitter.split_documents(docs)
+        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        st.session_state.vector_store = Chroma.from_documents(
+            documents=splits, embedding=embeddings
+        )
+      except Exception as e:
+        st.error(f"Gagal memuat dokumen otomatis: {e}")
+
+  if st.session_state.vector_store is not None and groq_api_key:
+    selected_model = get_safe_model(groq_api_key)
+    
+    llm = ChatGroq(
+        groq_api_key=groq_api_key,
+        model_name=selected_model,
+        temperature=0.1,
+        max_tokens=1024,
+    )
+    retriever = st.session_state.vector_store.as_retriever(
+        search_kwargs={"k": 4}
+    )
+
+    def format_docs(docs):
+      return "\n\n".join(doc.page_content for doc in docs)
+
+    template = """Anda adalah asisten HR yang ramah dan profesional.
+Gunakan konteks dokumen kebijakan perusahaan berikut untuk menjawab pertanyaan.
+Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.
+
+Konteks:
+{context}
+
+Pertanyaan: {question}
+
+Jawaban:"""
+    
+    prompt = PromptTemplate.from_template(template)
+    rag_chain = prompt | llm | StrOutputParser()
+
+    user_query = st.chat_input(
+        "Tanyakan tentang aturan cuti, klaim, atau SOP perusahaan..."
+    )
+
+    if user_query:
+      with st.chat_message("user"):
+        st.markdown(user_query)
+
+      with st.chat_message("assistant"):
+        with st.spinner("Mencari jawaban dalam dokumen..."):
+          try:
+            source_docs = retriever.invoke(user_query)
+            context_text = format_docs(source_docs)
+
+            answer = rag_chain.invoke({
+                "context": context_text,
+                "question": user_query
+            })
+
+            st.markdown(answer)
+
+            with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
+              for i, doc in enumerate(source_docs):
+                page_num = doc.metadata.get("page", 0)
+                st.markdown(f"**Sumber {i+1} (Halaman {page_num + 1}):**")
+                st.markdown(f"> {doc.page_content[:300]}...")
+                st.markdown("---")
+          except Exception as e:
+            st.error(
+                f"Terjadi kesalahan saat memproses jawaban dari AI. Detail: {e}"
+            )
+  else:
+    if not groq_api_key:
+      st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
+    else:
+      st.info(
+          "ℹ️ File dokumen belum terdeteksi. Pastikan file"
+          f" `{TARGET_PDF}` sudah di-commit dengan benar di GitHub."
+      )
+
+# --- TAB 2: DOWNLOAD DOKUMEN ---
+with tab2:
+  st.subheader("📥 Unduh Peraturan Perusahaan")
+  st.markdown(
+      "Anda dapat mengunduh dokumen resmi peraturan perusahaan melalui tombol di"
+      " bawah ini."
+  )
+
+  if os.path.exists(TARGET_PDF):
+    with open(TARGET_PDF, "rb") as pdf_file:
+      PDFbyte = pdf_file.read()
+    st.download_button(
+        label="📥 Download Peraturan Perusahaan (PDF)",
+        data=PDFbyte,
+        file_name=TARGET_PDF,
+        mime="application/pdf",
+    )
+  else:
+    st.warning(
+        f"⚠️ File `{TARGET_PDF}` belum ditemukan di repositori GitHub."
+    )
+
+# --- TAB 3: MODE ADMIN ---
+with tab3:
+  st.subheader("🔐 Panel Admin")
+  input_password = st.text_input(
+      "Masukkan Password Admin:", type="password", key="admin_pass_input"
+  )
+
+  if input_password == admin_pass_secret:
+    st.success("✅ Autentikasi Admin Berhasil!")
+    st.markdown("---")
+    st.subheader("📁 Perbarui Dokumen Peraturan")
+    st.markdown(
+        "Jika Anda ingin mengganti dokumen, silakan unggah file PDF baru di"
+        " bawah ini:"
+    )
+
+    with st.form("admin_upload_form"):
+      uploaded_file = st.file_uploader(
+          "Pilih file PDF Peraturan/Handbook baru", type=["pdf"]
+      )
+      submit_btn = st.form_submit_button("Proses & Perbarui Dokumen")
+
+    if submit_btn:
+      if not groq_api_key:
+        st.error("❌ Groq API Key belum diatur di Streamlit Secrets.")
+      elif not uploaded_file:
+        st.error("❌ Mohon pilih file PDF terlebih dahulu.")
+      else:
+        with st.spinner(
+            "Sedang memproses dokumen baru dan memperbarui indeks vektor..."
+        ):
+          try:
+            with open(TARGET_PDF, "wb") as f:
+              f.write(uploaded_file.getbuffer())
+
             loader = PyPDFLoader(TARGET_PDF)
             docs = loader.load()
-            splits = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200).split_documents(docs)
+
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000, chunk_overlap=200
+            )
+            splits = text_splitter.split_documents(docs)
+
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-            st.session_state.vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
+            vector_store = Chroma.from_documents(
+                documents=splits, embedding=embeddings
+            )
+            st.session_state.vector_store = vector_store
 
-    if st.session_state.vector_store and groq_api_key:
-        model_name = get_active_model(groq_api_key)
-        llm = ChatGroq(groq_api_key=groq_api_key, model_name=model_name, temperature=0.1, max_tokens=1024)
-        retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3})
-        
-        user_query = st.chat_input("Tanyakan tentang aturan perusahaan...")
-        if user_query:
-            with st.chat_message("user"): st.markdown(user_query)
-            with st.chat_message("assistant"):
-                try:
-                    docs = retriever.invoke(user_query)
-                    context = "\n\n".join([d.page_content for d in docs])
-                    prompt = PromptTemplate.from_template("Konteks: {context}\n\nJawab: {question}").format(context=context, question=user_query)
-                    answer = llm.invoke(prompt).content
-                    st.markdown(answer)
-                except Exception as e:
-                    st.error(f"Error AI ({model_name}): {e}")
+            st.success(
+                "✅ Dokumen berhasil diperbarui! Silakan kembali ke tab 'Chat"
+                " Karyawan'."
+            )
+          except Exception as e:
+            st.error(f"Terjadi kesalahan saat memproses dokumen: {e}")
+  else:
+    if input_password:
+      st.error("❌ Password salah!")
     else:
-        st.info("API Key tidak terbaca. Pastikan `GROQ_API_KEY` terisi di Settings > Secrets Streamlit Cloud.")
+      st.info("ℹ️ Masukkan password admin untuk mengakses panel manajemen.")
 
-# --- TAB 2 & 3 ---
-with tab2:
-    if os.path.exists(TARGET_PDF):
-        with open(TARGET_PDF, "rb") as f: st.download_button("📥 Download PDF", data=f, file_name=TARGET_PDF)
-with tab3:
-    pwd = st.text_input("Password:", type="password")
-    if pwd == admin_pass_secret:
-        file = st.file_uploader("Upload PDF Baru", type=["pdf"])
-        if st.button("Simpan"):
-            with open(TARGET_PDF, "wb") as f: f.write(file.getbuffer())
-            st.success("Berhasil! Silakan refresh aplikasi.")
+# Watermark di bawah halaman utama
+st.markdown("---")
+st.markdown(
+    "<p style='text-align: center; color: gray; font-size: 13px;'>Developed by"
+    " <b>iqbalmantam</b></p>",
+    unsafe_allow_html=True,
+)
