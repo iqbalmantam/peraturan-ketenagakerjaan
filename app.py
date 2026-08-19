@@ -121,7 +121,7 @@ with tab1:
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.0,
-        max_tokens=1200,
+        max_tokens=1000,
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -130,7 +130,8 @@ with tab1:
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
                 "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan. "
-                "DILARANG KERAS melakukan pengulangan teks, kalimat, atau looping. Sampaikan setiap poin dengan unik dan sekali saja. "
+                "DILARANG KERAS mengarang, menebak, atau membuat-buat informasi yang tidak tertulis secara nyata di dalam teks konteks. "
+                "Jika informasi tidak ditemukan di dalam teks, katakan dengan jujur bahwa informasi tersebut tidak tersedia di dokumen. "
                 "Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi dan profesional."
             ),
         ),
@@ -192,31 +193,12 @@ with tab1:
 * Jika dana hak-hak tersebut tidak mencukupi untuk melunasi hutang, PHK tidak secara otomatis membebaskan pekerja dari sisa hutangnya kepada pengusaha."""
               st.markdown(phk_response)
             
-            # --- 2. DEDICATED HANDLER UNTUK CUTI & IZIN ---
-            elif any(k in ql for k in ["cuti", "libur", "istirahat", "izin"]):
-              leave_texts = []
-              for d in st.session_state.raw_docs:
-                c_low = d.page_content.lower()
-                if any(term in c_low for term in ["cuti", "istirahat", "izin", "libur"]):
-                  leave_texts.append(d.page_content)
-              
-              if leave_texts:
-                unique_leave = list(dict.fromkeys(leave_texts))
-                context_text = "\n\n".join(unique_leave[:6])
-              else:
-                context_text = "Informasi mengenai cuti tidak ditemukan di dalam dokumen."
-
-              messages = chat_prompt.format_messages(
-                  context=context_text, question=user_query
-              )
-              response = llm.invoke(messages)
-              st.markdown(response.content)
-
-            # --- 3. STANDARD RETRIEVER UNTUK TOPIK LAIN ---
+            # --- 2. RETRIEVER PRESISI UNTUK CUTI/LAINNYA ---
             else:
-              retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
+              retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 4})
               source_docs = retriever.invoke(user_query)
               
+              # Deduplikasi dokumen agar tidak terjadi looping teks
               seen_texts = set()
               unique_docs = []
               for d in source_docs:
