@@ -102,7 +102,7 @@ with tab1:
         )
         splits = text_splitter.split_documents(docs)
         
-        # Simpan seluruh pecahan teks untuk pencarian bab langsung
+        # Simpan seluruh pecahan teks untuk filtering langsung
         st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -118,12 +118,12 @@ with tab1:
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
-        temperature=0.1,
+        temperature=0.0,  # Dibuat 0.0 agar AI fokus total pada teks dan tidak berimajinasi
         max_tokens=1024,
     )
     
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 6}
+        search_kwargs={"k": 5}
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -131,11 +131,12 @@ with tab1:
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan secara lengkap, terstruktur, dan profesional dalam bentuk poin-poin. "
-                "Jelaskan ketentuan pasal-pasal mengenai Pemutusan Hubungan Kerja (PHK) secara rinci sesuai isi dokumen."
+                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan di bawah ini. "
+                "DILARANG KERAS mengarang, menebak-nebak, atau menghubungkan dengan pasal lain di luar konteks yang diberikan. "
+                "Sajikan jawaban dalam bentuk poin-poin yang rapi, profesional, dan merujuk langsung pada isi pasal dalam dokumen."
             ),
         ),
-        ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
+        ("human", "Konteks Dokumen Resmi:\n{context}\n\nPertanyaan Karyawan: {question}"),
     ])
 
     user_query = st.chat_input(
@@ -147,25 +148,23 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari pasal resmi PHK di dalam program..."):
+        with st.spinner("Mencari pasal resmi di dalam dokumen..."):
           try:
             ql = user_query.lower()
             
-            # --- CHAPTER ROUTING: Paksa tarik Bab X (Pasal 52-62 tentang PHK) & Blokir Halaman 9 ---
-            if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
+            # --- STRICT FILTERING: Ambil langsung Bab X (Pasal 52-62) jika menanyakan PHK ---
+            if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
                 source_docs = [
                     doc for doc in st.session_state.raw_splits 
-                    if any(term in doc.page_content.lower() for term in ["pasal 52", "pasal 53", "pasal 54", "pasal 55", "pasal 56", "pasal 57", "pasal 58", "pasal 59", "pasal 60", "pasal 61", "pasal 62", "termination of employment"])
+                    if any(term in doc.page_content.lower() for term in ["bab x", "pasal 52", "pasal 53", "pasal 54", "pasal 55", "pasal 56", "pasal 57", "pasal 58", "pasal 59", "pasal 60", "pasal 61", "pasal 62"])
                 ]
                 if not source_docs:
                     source_docs = retriever.invoke(user_query)
-                else:
-                    source_docs = source_docs[:6]
             elif "cuti" in ql:
                 source_docs = [
                     doc for doc in st.session_state.raw_splits 
                     if "cuti" in doc.page_content.lower()
-                ][:6]
+                ][:5]
                 if not source_docs:
                     source_docs = retriever.invoke(user_query)
             else:
