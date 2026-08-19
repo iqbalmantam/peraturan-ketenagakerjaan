@@ -145,49 +145,48 @@ with tab1:
           try:
             ql = user_query.lower()
             
-            # --- DIRECT OVERRIDE HANDLER UNTUK PHK (100% Akurat & Tanpa Error/Looping) ---
+            # --- DIRECT OVERRIDE HANDLER UNTUK PHK ---
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
-              phk_response = """Berikut adalah ringkasan ketentuan mengenai Pemutusan Hubungan Kerja (PHK) berdasarkan dokumen Peraturan Perusahaan PT CJ Logistics Service Indonesia (Bab X, Pasal 52 sampai dengan Pasal 62)[cite: 1]:
+              phk_response = """Berikut adalah ringkasan ketentuan mengenai Pemutusan Hubungan Kerja (PHK) berdasarkan dokumen Peraturan Perusahaan PT CJ Logistics Service Indonesia (Bab X, Pasal 52 sampai dengan Pasal 62):
 
-**1. Prinsip Umum (Pasal 52)**[cite: 1]
-* Perusahaan senantiasa berupaya sedapat-dapatnya untuk mencegah terjadinya Pemutusan Hubungan Kerja (PHK)[cite: 1].  
-* Dalam keadaan memaksa yang mengakibatkan PHK, pengusaha akan bertindak dengan mengindahkan undang-undang yang berlaku[cite: 1].  
-* Putusnya hubungan kerja antara Pengusaha dan Pekerja dapat diakibatkan oleh berbagai hal, di antaranya[cite: 1]:  
-  * Pekerja meninggal dunia[cite: 1].  
-  * Pekerja mengundurkan diri[cite: 1].  
-  * Berakhirnya masa perjanjian kerja[cite: 1].  
-  * Pekerja tidak memenuhi syarat pada masa percobaan[cite: 1].  
-  * Masa sakit yang berkepanjangan[cite: 1].  
-  * Pembebasan tugas[cite: 1].  
-  * Pemberhentian karena lanjut usia[cite: 1].  
-  * Pekerja tidak mencapai prestasi kerja yang ditetapkan oleh Perusahaan[cite: 1].  
-  * Restrukturisasi organisasi Perusahaan[cite: 1].  
-  * Ditahan oleh pihak yang berwajib[cite: 1].  
-  * Pelanggaran terhadap Peraturan Perusahaan[cite: 1].  
-  * Perusahaan melakukan efisiensi[cite: 1].  
-  * Perusahaan tutup akibat mengalami kerugian terus-menerus selama 2 (dua) tahun atau peristiwa *force majeure*[cite: 1].  
-  * Perusahaan dalam keadaan penundaan kewajiban pembayaran utang[cite: 1].  
-  * Perusahaan pailit[cite: 1].  
-  * Adanya putusan Pengadilan Hubungan Industrial[cite: 1].  
-  * Pekerja/buruh mangkir selama 5 (lima) hari kerja atau lebih berturut-turut[cite: 1].  
+**1. Prinsip Umum (Pasal 52)**
+* Perusahaan senantiasa berupaya sedapat-dapatnya untuk mencegah terjadinya Pemutusan Hubungan Kerja (PHK).  
+* Dalam keadaan memaksa yang mengakibatkan PHK, pengusaha akan bertindak dengan mengindahkan undang-undang yang berlaku.  
+* Putusnya hubungan kerja antara Pengusaha dan Pekerja dapat diakibatkan oleh berbagai hal, di antaranya:  
+  * Pekerja meninggal dunia.  
+  * Pekerja mengundurkan diri.  
+  * Berakhirnya masa perjanjian kerja.  
+  * Pekerja tidak memenuhi syarat pada masa percobaan.  
+  * Masa sakit yang berkepanjangan.  
+  * Pembebasan tugas.  
+  * Pemberhentian karena lanjut usia.  
+  * Pekerja tidak mencapai prestasi kerja yang ditetapkan oleh Perusahaan.  
+  * Restrukturisasi organisasi Perusahaan.  
+  * Ditahan oleh pihak yang berwajib.  
+  * Pelanggaran terhadap Peraturan Perusahaan.  
+  * Perusahaan melakukan efisiensi.  
+  * Perusahaan tutup akibat mengalami kerugian terus-menerus selama 2 (dua) tahun atau peristiwa force majeure.  
+  * Perusahaan dalam keadaan penundaan kewajiban pembayaran utang.  
+  * Perusahaan pailit.  
+  * Adanya putusan Pengadilan Hubungan Industrial.  
+  * Pekerja/buruh mangkir selama 5 (lima) hari kerja atau lebih berturut-turut.  
 
-**2. Ketentuan Khusus Berdasarkan Kategori (Pasal 53–61)**[cite: 1]
-* **Masa Percobaan (Pasal 53):** Pengusaha berhak melakukan pemutusan hubungan kerja sewaktu-waktu selama masa percobaan jika pekerja dianggap tidak memenuhi syarat, dan PHK pada masa ini tidak disertai dengan pemberian imbalan, uang jasa, maupun pesangon[cite: 1].  
-* **Meninggal Dunia (Pasal 54):** Meninggalnya pekerja memutuskan hubungan kerja secara otomatis. Jika disebabkan kecelakaan, ahli waris diberikan santunan dan hak BPJS; jika bukan karena kecelakaan, ahli waris diberikan hak serta Sumbangan Kedukaan[cite: 1].  
-* **Pengunduran Diri (Pasal 55):** Permohonan pengunduran diri wajib diajukan secara tertulis selambat-lambatnya 1 (satu) bulan sebelumnya dengan tetap menjalankan fungsi secara penuh. Pekerja yang mangkir 5 hari atau lebih berturut-turut tanpa pemberitahuan dan telah dipanggil secara patut 2 kali dapat dikualifikasikan mengundurkan diri. Pekerja yang mengundurkan diri tidak wajib diberikan uang pesangon, tetapi diberikan uang penggantian hak dan uang pisah sesuai masa kerjanya[cite: 1].  
-* **Berakhirnya PKWT / Kontrak (Pasal 56):** Hubungan kerja berakhir sesuai tanggal dalam perjanjian, di mana pengusaha wajib memberikan uang kompensasi kepada pekerja sesuai ketentuan peraturan perundang-undangan[cite: 1].  
-* **Sakit Berkepanjangan (Pasal 57):** Pengusaha dapat memutuskan hubungan kerja setelah pekerja menderita sakit terus-menerus melebihi 12 bulan berdasarkan surat keterangan dokter[cite: 1].  
-* **Pembebasan Tugas (Pasal 58):** Perusahaan dapat mengambil tindakan PHK jika pekerja dijatuhi hukuman kurungan oleh pengadilan karena melanggar hukum/kesalahan besar atau melakukan pelanggaran tata tertib secara berulang setelah diberikan sanksi[cite: 1].  
-* **Pemberhentian Umum (Pasal 59):** Dapat dilakukan atas prakarsa pengusaha akibat program reorganisasi, rasionalisasi, atau perubahan sistem kerja setelah dimusyawarahkan, dengan pemberian pesangon atau uang jasa sesuai ketentuan[cite: 1].  
-* **Lanjut Usia / Pensiun (Pasal 60):** Pekerja ditetapkan pensiun dan diberhentikan dengan hormat saat berusia 55 tahun, serta berhak menerima dana BPJS Ketenagakerjaan dan hak-hak sesuai peraturan yang berlaku[cite: 1].  
-* **Hak Pesangon (Pasal 61):** Pekerja tetap yang mengalami PHK akan menerima pembayaran uang pesangon, uang penghargaan masa kerja, dan uang penggantian hak yang ditetapkan sesuai dengan peraturan perundang-undangan[cite: 1].  
+**2. Ketentuan Khusus Berdasarkan Kategori (Pasal 53–61)**
+* **Masa Percobaan (Pasal 53):** Pengusaha berhak melakukan pemutusan hubungan kerja sewaktu-waktu selama masa percobaan jika pekerja dianggap tidak memenuhi syarat, dan PHK pada masa ini tidak disertai dengan pemberian imbalan, uang jasa, maupun pesangon.  
+* **Meninggal Dunia (Pasal 54):** Meninggalnya pekerja memutuskan hubungan kerja secara otomatis. Jika disebabkan kecelakaan, ahli waris diberikan santunan dan hak BPJS; jika bukan karena kecelakaan, ahli waris diberikan hak serta Sumbangan Kedukaan.  
+* **Pengunduran Diri (Pasal 55):** Permohonan pengunduran diri wajib diajukan secara tertulis selambat-lambatnya 1 (satu) bulan sebelumnya dengan tetap menjalankan fungsi secara penuh. Pekerja yang mangkir 5 hari atau lebih berturut-turut tanpa pemberitahuan dan telah dipanggil secara patut 2 kali dapat dikualifikasikan mengundurkan diri. Pekerja yang mengundurkan diri tidak wajib diberikan uang pesangon, tetapi diberikan uang penggantian hak dan uang pisah sesuai masa kerjanya.  
+* **Berakhirnya PKWT / Kontrak (Pasal 56):** Hubungan kerja berakhir sesuai tanggal dalam perjanjian, di mana pengusaha wajib memberikan uang kompensasi kepada pekerja sesuai ketentuan peraturan perundang-undangan.  
+* **Sakit Berkepanjangan (Pasal 57):** Pengusaha dapat memutuskan hubungan kerja setelah pekerja menderita sakit terus-menerus melebihi 12 bulan berdasarkan surat keterangan dokter.  
+* **Pembebasan Tugas (Pasal 58):** Perusahaan dapat mengambil tindakan PHK jika pekerja dijatuhi hukuman kurungan oleh pengadilan karena melanggar hukum/kesalahan besar atau melakukan pelanggaran tata tertib secara berulang setelah diberikan sanksi.  
+* **Pemberhentian Umum (Pasal 59):** Dapat dilakukan atas prakarsa pengusaha akibat program reorganisasi, rasionalisasi, atau perubahan sistem kerja setelah dimusyawarahkan, dengan pemberian pesangon atau uang jasa sesuai ketentuan.  
+* **Lanjut Usia / Pensiun (Pasal 60):** Pekerja ditetapkan pensiun dan diberhentikan dengan hormat saat berusia 55 tahun, serta berhak menerima dana BPJS Ketenagakerjaan dan hak-hak sesuai peraturan yang berlaku.  
+* **Hak Pesangon (Pasal 61):** Pekerja tetap yang mengalami PHK akan menerima pembayaran uang pesangon, uang penghargaan masa kerja, dan uang penggantian hak yang ditetapkan sesuai dengan peraturan perundang-undangan.  
 
-**3. Hutang Pekerja Terkait PHK (Pasal 62)**[cite: 1]
-* Sehubungan dengan PHK, hutang-hutang pekerja kepada pengusaha dengan bukti yang sah akan diperhitungkan sekaligus dari uang pesangon, uang penghargaan masa kerja, uang penggantian hak, uang pisah, dan/atau uang kompensasi[cite: 1].  
-* Jika dana hak-hak tersebut tidak mencukupi untuk melunasi hutang, PHK tidak secara otomatis membebaskan pekerja dari sisa hutangnya kepada pengusaha[cite: 1]."""
+**3. Hutang Pekerja Terkait PHK (Pasal 62)**
+* Sehubungan dengan PHK, hutang-hutang pekerja kepada pengusaha dengan bukti yang sah akan diperhitungkan sekaligus dari uang pesangon, uang penghargaan masa kerja, uang penggantian hak, uang pisah, dan/atau uang kompensasi.  
+* Jika dana hak-hak tersebut tidak mencukupi untuk melunasi hutang, PHK tidak secara otomatis membebaskan pekerja dari sisa hutangnya kepada pengusaha."""
               st.markdown(phk_response)
             else:
-              # Untuk pertanyaan lain, gunakan LLM retriever standar
               retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
               source_docs = retriever.invoke(user_query)
               context_text = "\n\n".join([d.page_content for d in source_docs])
@@ -200,16 +199,16 @@ with tab1:
 
           except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses jawaban: {e}")
-  else:
-    if not groq_api_key:
-      st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
-    else:
-      st.info("ℹ️ File dokumen belum terdeteksi. Pastikan file sudah di-commit di GitHub.")
+      else:
+        if not groq_api_key:
+          st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
+        else:
+          st.info("ℹ️ File dokumen belum terdeteksi. Pastikan file sudah di-commit di GitHub.")
 
 # --- TAB 2: DOWNLOAD DOKUMEN ---
 with tab2:
   st.subheader("📥 Unduh Peraturan Perusahaan")
-  st.markdown("Anda dapat mengunduh dokumen resmi peraturan perusahaan melalui tombol di bawah ini.")
+  st.markdown("Anda dapat mendownload dokumen resmi peraturan perusahaan melalui tombol di bawah ini.")
 
   if os.path.exists(TARGET_PDF):
     with open(TARGET_PDF, "rb") as pdf_file:
