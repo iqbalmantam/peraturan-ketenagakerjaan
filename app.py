@@ -110,31 +110,29 @@ with tab1:
   if st.session_state.vector_store is not None and groq_api_key:
     selected_model = get_safe_model(groq_api_key)
     
-    # --- PENGAMANAN TOKEN DAN TEMPERATURE ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.0,
-        max_tokens=512,  # Membatasi panjang output untuk mencegah looping tak terbatas
+        max_tokens=512,
     )
     
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 4}
+        search_kwargs={"k": 5}
     )
 
-    # --- PROMPT ANTI-LOOPING ---
+    # --- SYSTEM PROMPT RINGKAS & ANTI-LOOPING ---
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
-                "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini. "
-                "Jika informasi tentang topik tersebut tidak ditemukan di dalam konteks, Anda WAJIB menjawab dengan persis: "
-                "'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' "
-                "PERINGATAN KERAS: Dilarang keras melakukan pengulangan teks (looping), dilarang membuat daftar angka bernomor berturut-turut secara berlebihan, dan dilarang berhalusinasi."
+                "Anda adalah HR Assistant perusahaan. Jawab pertanyaan karyawan secara jelas, "
+                "padat, dan langsung pada inti berdasarkan teks konteks dokumen yang diberikan. "
+                "Jika informasi tidak tersedia di konteks, jawab dengan singkat: 'Informasi tidak ditemukan dalam dokumen.' "
+                "Jangan mengulang-ulang kalimat."
             ),
         ),
-        ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
+        ("human", "Konteks:\n{context}\n\nPertanyaan: {question}"),
     ])
 
     user_query = st.chat_input(
@@ -150,15 +148,14 @@ with tab1:
           try:
             ql = user_query.lower()
             
-            # Pencarian spesifik untuk menghindari pasal yang salah
-            if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran"]):
-                # Jika mencari PHK, pastikan retriever mengambil teks yang benar-benar memuat kata kunci
+            # Mengantisipasi salah ketik atau variasi kata kunci PHK/Pemutusan
+            if any(k in ql for k in ["phk", "pemutus", "pesangon", "pengakhiran", "pisah"]):
                 source_docs = st.session_state.vector_store.similarity_search(
-                    "Pemutusan Hubungan Kerja PHK Pesangon Pengakhiran", k=4
+                    "pemutusan hubungan kerja phk pesangon pengakhiran", k=5
                 )
             elif "cuti" in ql:
                 source_docs = st.session_state.vector_store.similarity_search(
-                    "Cuti Cuti Tahunan Hak Cuti", k=4
+                    "cuti tahunan hak cuti", k=5
                 )
             else:
                 source_docs = retriever.invoke(user_query)
