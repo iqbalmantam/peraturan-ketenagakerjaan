@@ -65,7 +65,6 @@ st.markdown(
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
 
-# Nama File Utama dari GitHub
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
 # Gunakan Tab di Header Atas sebagai Menu Navigasi Utama
@@ -95,6 +94,7 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
+    # Langsung gunakan model terbaik secara otomatis tanpa dropdown
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name="llama-3.3-70b-versatile",
@@ -214,7 +214,6 @@ with tab3:
             "Sedang memproses dokumen baru dan memperbarui indeks vektor..."
         ):
           try:
-            # Simpan menimpa file utama
             with open(TARGET_PDF, "wb") as f:
               f.write(uploaded_file.getbuffer())
 
