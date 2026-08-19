@@ -97,8 +97,6 @@ with tab1:
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
-        
-        # Simpan dokumen mentah per halaman untuk ekstraksi bab presisi
         st.session_state.raw_docs = docs
         
         text_splitter = RecursiveCharacterTextSplitter(
@@ -119,7 +117,7 @@ with tab1:
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
-        temperature=0.1,
+        temperature=0.0,
         max_tokens=1500,
     )
 
@@ -129,8 +127,8 @@ with tab1:
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
                 "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan. "
-                "Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi dan profesional. "
-                "Jangan mengarang informasi di luar konteks dokumen[cite: 1]. TIDAK PERLU mencantumkan sitensi atau sumber dokumen."
+                "DILARANG KERAS menggunakan Pasal 6 atau informasi penggolongan karyawan untuk menjawab pertanyaan tentang Pemutusan Hubungan Kerja (PHK). "
+                "Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi, lengkap, dan profesional tanpa melakukan pengulangan teks."
             ),
         ),
         ("human", "Konteks Dokumen Resmi:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -150,35 +148,32 @@ with tab1:
             ql = user_query.lower()
             context_text = ""
             
-            # --- DIRECT CHAPTER EXTRACTION UNTUK PHK ---
+            # --- BYPASS VEKTOR: Ambil langsung Bab X (Pasal 52-62 tentang PHK) secara mutlak ---
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
-                chapter_x_texts = []
-                capturing = False
-                for doc in st.session_state.raw_docs:
-                    content = doc.page_content
-                    if "BAB X" in content or "PEMUTUSAN HUBUNGAN KERJA" in content:
-                        capturing = True
-                    if "BAB XI" in content or "PENYELESAIAN KELUHAN" in content:
-                        if capturing:
-                            break
-                    if capturing:
-                        chapter_x_texts.append(content)
-                
-                if chapter_x_texts:
-                    context_text = "\n\n".join(chapter_x_texts)
+                chapter_texts = []
+                for d in st.session_state.raw_docs:
+                    c_low = d.page_content.lower()
+                    if any(p in c_low for p in ["pasal 52", "pasal 53", "pasal 54", "pasal 55", "pasal 56", "pasal 57", "pasal 58", "pasal 59", "pasal 60", "pasal 61", "pasal 62"]):
+                        if "pasal 6:" not in c_low and "penggolongan pekerja" not in c_low:
+                            chapter_texts.append(d.page_content)
+                context_text = "\n\n".join(chapter_texts)
+            elif "cuti" in ql:
+                chapter_texts = [d.page_content for d in st.session_state.raw_docs if "cuti" in d.page_content.lower()]
+                context_text = "\n\n".join(chapter_texts)
             
-            # Jika bukan PHK atau Bab X tidak tertangkap, gunakan retriever standar
+            # Jika konteks kosong, gunakan retriever standar tanpa Pasal 6
             if not context_text:
                 retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
                 retrieved_docs = retriever.invoke(user_query)
-                context_text = "\n\n".join([d.page_content for d in retrieved_docs])
+                filtered_docs = [d for d in retrieved_docs if "pasal 6:" not in d.page_content.lower()]
+                context_text = "\n\n".join([d.page_content for d in filtered_docs])
 
             messages = chat_prompt.format_messages(
                 context=context_text, question=user_query
             )
             response = llm.invoke(messages)
             
-            # Tampilkan hasil secara bersih tanpa panel citation
+            # Tampilkan hasil secara bersih tanpa panel citation sama sekali
             st.markdown(response.content)
 
           except Exception as e:
@@ -237,7 +232,6 @@ with tab3:
 
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
             splits = text_splitter.split_documents(docs)
-            st.session_state.raw_splits = splits
 
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
