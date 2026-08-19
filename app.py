@@ -38,6 +38,16 @@ def load_pdf_text(pdf_path):
 
 pdf_content = load_pdf_text(TARGET_PDF)
 
+# --- FUNGSI PENCARI MODEL GEMINI OTOMATIS (Mencegah Error 404) ---
+def get_working_gemini_model():
+    try:
+        for m in genai.list_models():
+            if "generateContent" in m.supported_generation_methods and "flash" in m.name.lower():
+                return m.name
+        return "gemini-1.5-flash"
+    except Exception:
+        return "gemini-1.5-flash"
+
 # --- TAB 1: CHAT KARYAWAN ---
 with tab1:
     st.subheader("💬 Tanya Jawab Kebijakan Perusahaan")
@@ -55,8 +65,9 @@ with tab1:
                     elif not pdf_content:
                         st.error(f"⚠️ File PDF `{TARGET_PDF}` tidak ditemukan di repositori.")
                     else:
-                        # Menggunakan model Gemini yang cepat dan stabil
-                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        # Memilih model yang aktif secara otomatis
+                        model_name = get_working_gemini_model()
+                        model = genai.GenerativeModel(model_name)
                         
                         prompt = f"""
                         Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional, teliti, dan ramah.
