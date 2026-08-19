@@ -77,6 +77,8 @@ st.markdown(
 # Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
+if "raw_splits" not in st.session_state:
+  st.session_state.raw_splits = []
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
@@ -100,6 +102,9 @@ with tab1:
         )
         splits = text_splitter.split_documents(docs)
         
+        # Simpan seluruh teks mentah untuk pencarian kata kunci langsung
+        st.session_state.raw_splits = splits
+        
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         st.session_state.vector_store = Chroma.from_documents(
             documents=splits, embedding=embeddings
@@ -121,18 +126,18 @@ with tab1:
         search_kwargs={"k": 5}
     )
 
-    # --- SYSTEM PROMPT RINGKAS & ANTI-LOOPING ---
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
-                "Anda adalah HR Assistant perusahaan. Jawab pertanyaan karyawan secara jelas, "
-                "padat, dan langsung pada inti berdasarkan teks konteks dokumen yang diberikan. "
-                "Jika informasi tidak tersedia di konteks, jawab dengan singkat: 'Informasi tidak ditemukan dalam dokumen.' "
-                "Jangan mengulang-ulang kalimat."
+                "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
+                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini secara ringkas, padat, dan jelas. "
+                "Jika informasi tentang topik tersebut tidak ditemukan di dalam konteks, Anda WAJIB menjawab dengan persis: "
+                "'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' "
+                "Dilarang keras mengulang-ulang kalimat atau berhalusinasi."
             ),
         ),
-        ("human", "Konteks:\n{context}\n\nPertanyaan: {question}"),
+        ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
     ])
 
     user_query = st.chat_input(
@@ -148,15 +153,25 @@ with tab1:
           try:
             ql = user_query.lower()
             
-            # Mengantisipasi salah ketik atau variasi kata kunci PHK/Pemutusan
-            if any(k in ql for k in ["phk", "pemutus", "pesangon", "pengakhiran", "pisah"]):
-                source_docs = st.session_state.vector_store.similarity_search(
-                    "pemutusan hubungan kerja phk pesangon pengakhiran", k=5
-                )
+            # --- PENCARIAN KATA KUNCI LANGSUNG (DIRECT KEYWORD MATCHING) ---
+            if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
+                # Memfilter langsung seluruh pecahan dokumen yang mengandung kata kunci PHK/Pesangon
+                source_docs = [
+                    doc for doc in st.session_state.raw_splits 
+                    if any(word in doc.page_content.lower() for word in ["phk", "pemutusan", "pesangon", "pengakhiran", "uang pisah"])
+                ]
+                # Jika tidak ketemu lewat keyword, fallback ke retriever biasa
+                if not source_docs:
+                    source_docs = retriever.invoke(user_query)
+                else:
+                    source_docs = source_docs[:6]
             elif "cuti" in ql:
-                source_docs = st.session_state.vector_store.similarity_search(
-                    "cuti tahunan hak cuti", k=5
-                )
+                source_docs = [
+                    doc for doc in st.session_state.raw_splits 
+                    if "cuti" in doc.page_content.lower()
+                ][:6]
+                if not source_docs:
+                    source_docs = retriever.invoke(user_query)
             else:
                 source_docs = retriever.invoke(user_query)
 
@@ -253,6 +268,7 @@ with tab3:
                 chunk_size=1000, chunk_overlap=200
             )
             splits = text_splitter.split_documents(docs)
+            st.session_state.raw_splits = splits
 
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             vector_store = Chroma.from_documents(
