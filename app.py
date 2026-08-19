@@ -13,8 +13,6 @@ import streamlit as st
 from groq import Groq
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
-from langchain_community.retrievers import BM25Retriever
-from langchain.retrievers import EnsembleRetriever
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -79,8 +77,6 @@ st.markdown(
 # Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
-if "ensemble_retriever" not in st.session_state:
-  st.session_state.ensemble_retriever = None
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
@@ -93,9 +89,9 @@ tab1, tab2, tab3 = st.tabs(
 with tab1:
   st.subheader("💬 Tanya Jawab Kebijakan Perusahaan")
 
-  # Muat otomatis dokumen dari GitHub jika retriever belum diinisialisasi
-  if st.session_state.ensemble_retriever is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memproses seluruh dokumen peraturan perusahaan dengan Hybrid Search..."):
+  # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
+  if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
+    with st.spinner("Memproses seluruh dokumen peraturan perusahaan (52 Halaman)..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
@@ -104,25 +100,14 @@ with tab1:
         )
         splits = text_splitter.split_documents(docs)
         
-        # 1. Inisialisasi Vector Store (Chroma)
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
-        vector_retriever = vector_store.as_retriever(search_kwargs={"k": 4})
-        
-        # 2. Inisialisasi Keyword Retriever (BM25) untuk pencarian kata persis
-        bm25_retriever = BM25Retriever.from_documents(splits)
-        bm25_retriever.k = 4
-        
-        # 3. Gabungkan keduanya dalam Ensemble Retriever (50% Keyword, 50% Semantic)
-        st.session_state.ensemble_retriever = EnsembleRetriever(
-            retrievers=[bm25_retriever, vector_retriever],
-            weights=[0.5, 0.5]
+        st.session_state.vector_store = Chroma.from_documents(
+            documents=splits, embedding=embeddings
         )
-        st.session_state.vector_store = vector_store
       except Exception as e:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
-  if st.session_state.ensemble_retriever is not None and groq_api_key:
+  if st.session_state.vector_store is not None and groq_api_key:
     selected_model = get_safe_model(groq_api_key)
     
     llm = ChatGroq(
@@ -132,12 +117,17 @@ with tab1:
         max_tokens=1024,
     )
     
+    # Gunakan retriever standar Chroma
+    retriever = st.session_state.vector_store.as_retriever(
+        search_kwargs={"k": 10}
+    )
+
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini secara lengkap, jelas, dan profesional. "
+                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan perusahaan yang diberikan di bawah ini secara lengkap, jelas, dan profesional. "
                 "Jika informasi benar-benar tidak ditemukan di dalam konteks, katakan dengan persis: 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.'"
             ),
         ),
@@ -153,10 +143,31 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban akurat dengan Hybrid Search..."):
+        with st.spinner("Mencari jawaban akurat dari dokumen..."):
           try:
-            # Menggunakan Ensemble Retriever (Menggabungkan BM25 & Chroma)
-            source_docs = st.session_state.ensemble_retriever.invoke(user_query)
+            # 1. Ambil kandidat dokumen via vector retriever
+            initial_docs = retriever.invoke(user_query)
+            
+            ql = user_query.lower()
+            scored_docs = []
+            
+            # 2. Custom Python Keyword Boosting (Memastikan pasal PHK/Pesangon diprioritaskan)
+            for doc in initial_docs:
+                score = 0
+                content_lower = doc.page_content.lower()
+                
+                if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
+                    if any(k in content_lower for k in ["pemutusan", "phk", "pesangon", "pengakhiran", "uang pisah"]):
+                        score += 100  # Berikan skor tinggi agar halaman yang benar naik ke atas
+                
+                scored_docs.append((score, doc))
+            
+            # Urutkan berdasarkan skor boosting, lalu ambil 5 teratas
+            scored_docs.sort(key=lambda x: x[0], reverse=True)
+            source_docs = [doc for score, doc in scored_docs[:5]]
+            if not source_docs:
+                source_docs = initial_docs[:5]
+
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
             messages = chat_prompt.format_messages(
@@ -238,7 +249,7 @@ with tab3:
         st.error("❌ Mohon pilih file PDF terlebih dahulu.")
       else:
         with st.spinner(
-            "Sedang memproses dokumen baru dan memperbarui indeks Hybrid Search..."
+            "Sedang memproses dokumen baru dan memperbarui indeks vektor..."
         ):
           try:
             with open(TARGET_PDF, "wb") as f:
@@ -253,15 +264,8 @@ with tab3:
             splits = text_splitter.split_documents(docs)
 
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-            vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
-            vector_retriever = vector_store.as_retriever(search_kwargs={"k": 4})
-
-            bm25_retriever = BM25Retriever.from_documents(splits)
-            bm25_retriever.k = 4
-
-            st.session_state.ensemble_retriever = EnsembleRetriever(
-                retrievers=[bm25_retriever, vector_retriever],
-                weights=[0.5, 0.5]
+            vector_store = Chroma.from_documents(
+                documents=splits, embedding=embeddings
             )
             st.session_state.vector_store = vector_store
 
