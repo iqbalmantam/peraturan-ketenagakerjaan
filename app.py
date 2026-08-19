@@ -74,9 +74,11 @@ st.markdown(
     " kebijakan perusahaan dari seluruh isi dokumen."
 )
 
-# Inisialisasi Sesi State untuk Penyimpanan Vektor
+# Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
+if "raw_splits" not in st.session_state:
+  st.session_state.raw_splits = []
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
@@ -99,6 +101,10 @@ with tab1:
             chunk_size=1000, chunk_overlap=200
         )
         splits = text_splitter.split_documents(docs)
+        
+        # Simpan splits ke session_state untuk pencarian kata kunci langsung
+        st.session_state.raw_splits = splits
+        
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         st.session_state.vector_store = Chroma.from_documents(
             documents=splits, embedding=embeddings
@@ -117,7 +123,7 @@ with tab1:
     )
     
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 5}
+        search_kwargs={"k": 4}
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -127,7 +133,7 @@ with tab1:
                 "Anda adalah asisten HR perusahaan yang profesional dan akurat."
                 " Jawablah pertanyaan karyawan HANYA berdasarkan konteks dokumen kebijakan perusahaan"
                 " yang diberikan. Jika informasi tidak ada di dalam konteks, katakan dengan persis:"
-                " 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' Dilarang berhalusinasi atau mengulang kalimat."
+                " 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' Dilarang berhalusinasi."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -142,19 +148,24 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari pasal yang sesuai dari 52 halaman dokumen..."):
+        with st.spinner("Mencari jawaban akurat dari 52 halaman dokumen..."):
           try:
-            # --- PENCARIAN LANGSUNG BERDASARKAN KATA KUNCI SPESIFIK ---
             ql = user_query.lower()
-            if "phk" in ql or "pemutusan" in ql:
-                # Memaksa pencarian mencari kata-kata kunci spesifik bab akhir
-                source_docs = st.session_state.vector_store.similarity_search(
-                    "Pemutusan Hubungan Kerja PHK Pesangon Uang Penghargaan Masa Kerja", k=5
-                )
+            
+            # --- HYBRID SEARCH: Pencarian Kata Kunci Langsung untuk Topik Krusial ---
+            if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran"]):
+                # Cari langsung chunk yang mengandung kata kunci PHK/Pesangon di seluruh dokumen
+                keyword_matches = [
+                    doc for doc in st.session_state.raw_splits 
+                    if any(k in doc.page_content.lower() for k in ["pemutusan", "phk", "pesangon", "pengakhiran", "penghargaan masa kerja"])
+                ]
+                source_docs = keyword_matches[:5] if keyword_matches else retriever.invoke(user_query)
             elif "cuti" in ql:
-                source_docs = st.session_state.vector_store.similarity_search(
-                    "Cuti Cuti Tahunan Hak Cuti", k=5
-                )
+                keyword_matches = [
+                    doc for doc in st.session_state.raw_splits 
+                    if "cuti" in doc.page_content.lower()
+                ]
+                source_docs = keyword_matches[:5] if keyword_matches else retriever.invoke(user_query)
             else:
                 source_docs = retriever.invoke(user_query)
 
@@ -251,6 +262,7 @@ with tab3:
                 chunk_size=1000, chunk_overlap=200
             )
             splits = text_splitter.split_documents(docs)
+            st.session_state.raw_splits = splits
 
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             vector_store = Chroma.from_documents(
