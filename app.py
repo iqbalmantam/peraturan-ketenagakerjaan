@@ -93,10 +93,10 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    # --- MODEL TELAH DIPERBARUI KE VERSI TERBARU YANG AKTIF ---
+    # --- MENGGUNAKAN MODEL MIXTRAL (ANTI-ERROR & SELALU TERSEDIA) ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name="llama-3.1-8b-instant",
+        model_name="mixtral-8x7b-32768",
         temperature=0.1,
     )
     retriever = st.session_state.vector_store.as_retriever(
@@ -120,7 +120,7 @@ Jawaban:"""
     
     prompt = PromptTemplate.from_template(template)
     
-    # Rantai pemrosesan yang sangat simpel tanpa modul 'chains'
+    # Rantai pemrosesan yang simpel dan stabil
     rag_chain = prompt | llm | StrOutputParser()
 
     user_query = st.chat_input(
