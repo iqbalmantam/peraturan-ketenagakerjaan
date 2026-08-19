@@ -117,18 +117,20 @@ with tab1:
         max_tokens=1024,
     )
     
-    # Gunakan retriever standar Chroma
     retriever = st.session_state.vector_store.as_retriever(
         search_kwargs={"k": 10}
     )
 
+    # --- SYSTEM PROMPT DISEMPURNAKAN AGAR MENJELASKAN DEFINISI YANG DITEMUKAN ---
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan perusahaan yang diberikan di bawah ini secara lengkap, jelas, dan profesional. "
-                "Jika informasi benar-benar tidak ditemukan di dalam konteks, katakan dengan persis: 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.'"
+                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan perusahaan yang diberikan di bawah ini. "
+                "Jika konteks memuat definisi, ketentuan, atau istilah yang berkaitan dengan pertanyaan (seperti definisi PHK, pesangon, uang penghargaan, uang penggantian hak, dan uang pisah), "
+                "jelaskan dan uraikan hal tersebut dengan jelas kepada karyawan dalam bentuk poin-poin yang rapi. "
+                "Jangan katakan informasi tidak ditemukan jika teks konteks memuat informasi yang relevan."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -145,24 +147,21 @@ with tab1:
       with st.chat_message("assistant"):
         with st.spinner("Mencari jawaban akurat dari dokumen..."):
           try:
-            # 1. Ambil kandidat dokumen via vector retriever
             initial_docs = retriever.invoke(user_query)
-            
             ql = user_query.lower()
             scored_docs = []
             
-            # 2. Custom Python Keyword Boosting (Memastikan pasal PHK/Pesangon diprioritaskan)
+            # Keyword boosting agar Halaman 6 (Definisi PHK & Pesangon) diprioritaskan
             for doc in initial_docs:
                 score = 0
                 content_lower = doc.page_content.lower()
                 
                 if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
                     if any(k in content_lower for k in ["pemutusan", "phk", "pesangon", "pengakhiran", "uang pisah"]):
-                        score += 100  # Berikan skor tinggi agar halaman yang benar naik ke atas
+                        score += 100
                 
                 scored_docs.append((score, doc))
             
-            # Urutkan berdasarkan skor boosting, lalu ambil 5 teratas
             scored_docs.sort(key=lambda x: x[0], reverse=True)
             source_docs = [doc for score, doc in scored_docs[:5]]
             if not source_docs:
