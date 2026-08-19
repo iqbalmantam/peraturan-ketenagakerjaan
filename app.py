@@ -72,7 +72,7 @@ def get_safe_model(api_key):
 st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
 st.markdown(
     "Asisten cerdas untuk menjawab pertanyaan seputar aturan, SOP, dan"
-    " kebijakan perusahaan dari seluruh isi dokumen (52 Halaman)."
+    " kebijakan perusahaan dari seluruh isi dokumen."
 )
 
 # Inisialisasi Sesi State untuk Penyimpanan Vektor
@@ -92,7 +92,7 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memproses seluruh 52 halaman dokumen perusahaan..."):
+    with st.spinner("Memuat dokumen peraturan perusahaan..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
@@ -117,21 +117,18 @@ with tab1:
         max_tokens=1024,
     )
     
-    # --- PENGATURAN RETRIEVER MENYELURUH (MMR) ---
-    # Menggunakan search_type="mmr" agar pencarian mencakup berbagai topik dari 52 halaman secara merata
+    # Dikembalikan ke nilai stabil k=6 dengan pencarian standar agar tidak terjadi kebingungan teks
     retriever = st.session_state.vector_store.as_retriever(
-        search_type="mmr",
-        search_kwargs={"k": 10, "fetch_k": 20}
+        search_kwargs={"k": 6}
     )
 
     def format_docs(docs):
       return "\n\n".join(doc.page_content for doc in docs)
 
-    template = """Anda adalah asisten HR yang ramah dan profesional.
-Gunakan konteks dokumen kebijakan perusahaan (52 halaman) berikut untuk menjawab pertanyaan secara rinci dan akurat.
-Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.
+    # Prompt diperketat agar AI fokus memberikan penjelasan, bukan nomor berulang
+    template = """Anda adalah asisten HR yang profesional. Jawablah pertanyaan karyawan berdasarkan konteks dokumen kebijakan perusahaan di bawah ini secara jelas dan terstruktur dalam bentuk paragraf atau poin penjelasan. Jangan membuat daftar angka berurutan yang tidak relevan.
 
-Konteks:
+Konteks Dokumen:
 {context}
 
 Pertanyaan: {question}
@@ -150,7 +147,7 @@ Jawaban:"""
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban ke seluruh halaman dokumen..."):
+        with st.spinner("Mencari jawaban dalam dokumen..."):
           try:
             source_docs = retriever.invoke(user_query)
             context_text = format_docs(source_docs)
@@ -162,7 +159,7 @@ Jawaban:"""
 
             st.markdown(answer)
 
-            with st.expander("📚 Lihat Sumber Dokumen (Citation dari Berbagai Halaman)"):
+            with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
               for i, doc in enumerate(source_docs):
                 page_num = doc.metadata.get("page", 0)
                 st.markdown(f"**Sumber {i+1} (Halaman {page_num + 1}):**")
