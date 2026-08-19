@@ -117,7 +117,6 @@ with tab1:
         max_tokens=1024,
     )
     
-    # Dikembalikan ke nilai stabil k=6 dengan pencarian standar agar tidak terjadi kebingungan teks
     retriever = st.session_state.vector_store.as_retriever(
         search_kwargs={"k": 6}
     )
@@ -125,8 +124,7 @@ with tab1:
     def format_docs(docs):
       return "\n\n".join(doc.page_content for doc in docs)
 
-    # Prompt diperketat agar AI fokus memberikan penjelasan, bukan nomor berulang
-    template = """Anda adalah asisten HR yang profesional. Jawablah pertanyaan karyawan berdasarkan konteks dokumen kebijakan perusahaan di bawah ini secara jelas dan terstruktur dalam bentuk paragraf atau poin penjelasan. Jangan membuat daftar angka berurutan yang tidak relevan.
+    template = """Anda adalah asisten HR yang profesional. Jawablah pertanyaan karyawan berdasarkan konteks dokumen kebijakan perusahaan di bawah ini secara jelas dan terstruktur dalam bentuk paragraf atau poin penjelasan.
 
 Konteks Dokumen:
 {context}
@@ -149,7 +147,14 @@ Jawaban:"""
       with st.chat_message("assistant"):
         with st.spinner("Mencari jawaban dalam dokumen..."):
           try:
-            source_docs = retriever.invoke(user_query)
+            # --- PERLUASAN KATA KUNCI (QUERY EXPANSION) ---
+            search_query = user_query
+            if "phk" in user_query.lower():
+                search_query = "phk pemutusan hubungan kerja pesangon pengakhiran hubungan kerja"
+            elif "cuti" in user_query.lower():
+                search_query = "cuti cuti tahunan hak cuti"
+
+            source_docs = retriever.invoke(search_query)
             context_text = format_docs(source_docs)
 
             answer = rag_chain.invoke({
@@ -219,7 +224,7 @@ with tab3:
     with st.form("admin_upload_form"):
       uploaded_file = st.file_uploader(
           "Pilih file PDF Peraturan/Handbook baru", type=["pdf"]
-      )
+        )
       submit_btn = st.form_submit_button("Proses & Perbarui Dokumen")
 
     if submit_btn:
