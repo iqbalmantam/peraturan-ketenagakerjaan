@@ -102,7 +102,7 @@ with tab1:
         )
         splits = text_splitter.split_documents(docs)
         
-        # Simpan seluruh pecahan teks untuk routing bab khusus
+        # Simpan seluruh pecahan teks untuk pencarian bab langsung
         st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -132,7 +132,7 @@ with tab1:
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
                 "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan secara lengkap, terstruktur, dan profesional dalam bentuk poin-poin. "
-                "Jelaskan ketentuan pasal-pasal yang tercantum dalam konteks secara rinci."
+                "Jelaskan ketentuan pasal-pasal mengenai Pemutusan Hubungan Kerja (PHK) secara rinci sesuai isi dokumen."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -147,15 +147,15 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari pasal resmi di dalam program..."):
+        with st.spinner("Mencari pasal resmi PHK di dalam program..."):
           try:
             ql = user_query.lower()
             
-            # --- CHAPTER ROUTING: Paksa tarik Bab X (Pasal 52-62 tentang PHK) ---
+            # --- CHAPTER ROUTING: Paksa tarik Bab X (Pasal 52-62 tentang PHK) & Blokir Halaman 9 ---
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
                 source_docs = [
                     doc for doc in st.session_state.raw_splits 
-                    if any(term in doc.page_content.lower() for term in ["bab x", "pasal 52", "pasal 55", "pasal 61", "pesangon"])
+                    if any(term in doc.page_content.lower() for term in ["pasal 52", "pasal 53", "pasal 54", "pasal 55", "pasal 56", "pasal 57", "pasal 58", "pasal 59", "pasal 60", "pasal 61", "pasal 62", "termination of employment"])
                 ]
                 if not source_docs:
                     source_docs = retriever.invoke(user_query)
@@ -239,7 +239,7 @@ with tab3:
         " bawah ini:"
     )
 
-    with st.form("admin_upload_form"):
+    with st.form("admin_form"):
       uploaded_file = st.file_uploader(
           "Pilih file PDF Peraturan/Handbook baru", type=["pdf"]
       )
