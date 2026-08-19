@@ -77,8 +77,8 @@ st.markdown(
 # Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
-if "raw_splits" not in st.session_state:
-  st.session_state.raw_splits = []
+if "raw_docs" not in st.session_state:
+  st.session_state.raw_docs = []
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
@@ -97,13 +97,14 @@ with tab1:
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
+        
+        # Simpan dokumen mentah per halaman untuk ekstraksi bab presisi
+        st.session_state.raw_docs = docs
+        
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000, chunk_overlap=200
         )
         splits = text_splitter.split_documents(docs)
-        
-        # Simpan seluruh pecahan teks untuk filtering langsung
-        st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         st.session_state.vector_store = Chroma.from_documents(
@@ -118,7 +119,7 @@ with tab1:
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
-        temperature=0.0,  # 0.0 agar AI fokus total pada teks dan tidak berimajinasi
+        temperature=0.0,
         max_tokens=1500,
     )
     
@@ -133,11 +134,11 @@ with tab1:
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
                 "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan di bawah ini. "
                 "DILARANG KERAS menggunakan Pasal 6 atau informasi penggolongan karyawan untuk menjawab pertanyaan tentang PHK. "
-                "Sajikan jawaban dengan terstruktur rapi ke dalam bagian-bagian berikut jika relevan:\n"
+                "Sajikan jawaban dengan terstruktur rapi ke dalam format berikut:\n"
                 "1. Prinsip Umum (Pasal 52)\n"
                 "2. Ketentuan Khusus Berdasarkan Kategori (Pasal 53–61)\n"
                 "3. Hutang Pekerja Terkait PHK (Pasal 62)\n"
-                "Gunakan format poin-poin yang jelas dan profesional."
+                "Gunakan poin-poin yang jelas dan profesional sesuai isi dokumen[cite: 1]."
             ),
         ),
         ("human", "Konteks Dokumen Resmi:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -156,20 +157,25 @@ with tab1:
           try:
             ql = user_query.lower()
             
-            # --- STRICT NEGATIVE FILTERING: Blokir Pasal 6, Paksa ambil Bab X (Pasal 52-62) ---
+            # --- PROGRAMMATIC CHAPTER EXTRACTION UNTUK PHK ---
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
-                source_docs = [
-                    doc for doc in st.session_state.raw_splits 
-                    if ("pasal 6" not in doc.page_content.lower() and "penggolongan pekerja" not in doc.page_content.lower()) 
-                    and any(term in doc.page_content.lower() for term in ["bab x", "pasal 52", "pasal 53", "pasal 54", "pasal 55", "pasal 56", "pasal 57", "pasal 58", "pasal 59", "pasal 60", "pasal 61", "pasal 62", "termination of employment"])
-                ]
-                if not source_docs:
-                    source_docs = retriever.invoke(user_query)
-                else:
-                    source_docs = source_docs[:8]
+                # Ambil langsung halaman-halaman yang memuat Bab X (Pasal 52 sampai 62) secara utuh
+                phk_docs = []
+                capture = False
+                for doc in st.session_state.raw_docs:
+                    content = doc.page_content
+                    if "BAB X" in content or "TERMINATION OF EMPLOYMENT" in content:
+                        capture = True
+                    if capture:
+                        phk_docs.append(doc)
+                    if "BAB XI" in content or "PENYELESAIAN KELUHAN" in content:
+                        if capture:
+                            break
+                
+                source_docs = phk_docs if phk_docs else retriever.invoke(user_query)
             elif "cuti" in ql:
                 source_docs = [
-                    doc for doc in st.session_state.raw_splits 
+                    doc for doc in st.session_state.raw_docs 
                     if "cuti" in doc.page_content.lower()
                 ][:5]
                 if not source_docs:
@@ -191,7 +197,7 @@ with tab1:
               with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
                 for i, doc in enumerate(source_docs):
                   page_num = doc.metadata.get("page", 0)
-                  st.markdown(f"**Sumber {i+1} (Halaman {page_num + 1}):**")
+                  st.markdown(f"**Sumber {i+1} (Halaman {page_num + 1}):**[cite: 1]")
                   st.markdown(f"> {doc.page_content[:300]}...")
                   st.markdown("---")
           except Exception as e:
@@ -261,17 +267,17 @@ with tab3:
             "Sedang memproses dokumen baru dan memperbarui indeks vektor..."
         ):
           try:
-            with open(TARGET_PDF, "wb`") as f:
+            with open(TARGET_PDF, "wb") as f:
               f.write(uploaded_file.getbuffer())
 
             loader = PyPDFLoader(TARGET_PDF)
             docs = loader.load()
+            st.session_state.raw_docs = docs
 
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000, chunk_overlap=200
             )
             splits = text_splitter.split_documents(docs)
-            st.session_state.raw_splits = splits
 
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             vector_store = Chroma.from_documents(
