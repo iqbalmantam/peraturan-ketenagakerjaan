@@ -12,6 +12,7 @@ except ImportError:
 # ---------------------------------------------
 
 import streamlit as st
+from groq import Groq  # Import tambahan untuk auto-discovery model
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.output_parsers import StrOutputParser
@@ -53,6 +54,39 @@ try:
 except Exception:
   pass
 
+# Fungsi Auto-Discovery Model (Mencari model terbaik yang aktif di API Key Anda)
+@st.cache_data(show_spinner=False)
+def get_best_active_model(api_key):
+    try:
+        client = Groq(api_key=api_key)
+        models_data = client.models.list().data
+        available_models = [m.id for m in models_data]
+        
+        # Urutan prioritas model dari yang tercerdas hingga standar
+        priorities = [
+            "llama-3.3-70b-versatile",
+            "llama-3.1-70b-versatile",
+            "llama-3.1-8b-instant",
+            "llama-3.2-3b-preview",
+            "llama-3.2-1b-preview",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it"
+        ]
+        
+        # Cek dan pilih model terbaik yang tersedia di akun Anda
+        for p in priorities:
+            if p in available_models:
+                return p
+                
+        # Jika prioritas tidak ada, ambil model teks apa saja yang tersedia
+        for model in available_models:
+            if "whisper" not in model.lower() and "vision" not in model.lower():
+                return model
+                
+        return "llama-3.1-8b-instant" # Fallback mutlak
+    except Exception:
+        return "llama-3.1-8b-instant"
+
 # Judul Aplikasi
 st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
 st.markdown(
@@ -93,10 +127,12 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    # --- MODEL GEMMA 2 (SANGAT STABIL & AKTIF DI GROQ) ---
+    # --- MENDAPATKAN MODEL TERBAIK SECARA OTOMATIS ---
+    best_model_id = get_best_active_model(groq_api_key)
+    
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name="gemma2-9b-it",
+        model_name=best_model_id,
         temperature=0.1,
     )
     retriever = st.session_state.vector_store.as_retriever(
@@ -132,7 +168,7 @@ Jawaban:"""
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban dalam dokumen..."):
+        with st.spinner(f"Mencari jawaban menggunakan AI ({best_model_id})..."):
           try:
             source_docs = retriever.invoke(user_query)
             context_text = format_docs(source_docs)
