@@ -101,8 +101,6 @@ with tab1:
             chunk_size=1000, chunk_overlap=200
         )
         splits = text_splitter.split_documents(docs)
-        
-        # Simpan seluruh pecahan teks untuk pencarian kata kunci langsung
         st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -126,14 +124,15 @@ with tab1:
         search_kwargs={"k": 6}
     )
 
+    # --- PROMPT DIPERKETAT AGAR TIDAK ADA META-KOMENTAR ---
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
-                "Anda adalah asisten HR perusahaan yang profesional, cerdas, dan akurat."
-                " Jawablah pertanyaan karyawan berdasarkan konteks dokumen kebijakan perusahaan"
-                " yang diberikan dengan selengkap dan sejelas mungkin. Jelaskan poin-poin yang"
-                " tercantum dalam dokumen terkait topik yang ditanyakan."
+                "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
+                "Tugas Anda adalah menjawab pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini. "
+                "Berikan jawaban yang lugas, jelas, dan profesional dalam bentuk poin-poin atau paragraf rapi. "
+                "DILARANG KERAS menuliskan meta-komentar, penjelasan tentang cara menjawab, atau mengulang instruksi. Langsung berikan isi jawabannya."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -148,19 +147,18 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban komprehensif dari 52 halaman dokumen..."):
+        with st.spinner("Mencari jawaban komprehensif dari dokumen..."):
           try:
             ql = user_query.lower()
             
-            # --- TRUE HYBRID SEARCH: Gabungan Vektor + Pencarian Kata Kunci Harfiah ---
+            # Hybrid search untuk mengambil pasal-pasal krusial secara akurat
             vector_docs = retriever.invoke(user_query)
-            
-            # Jika menanyakan PHK/Pemutusan Kerja, ambil juga chunk yang mengandung kata kunci krusial secara langsung
             keyword_docs = []
+            
             if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran", "kerja"]):
                 keyword_docs = [
                     doc for doc in st.session_state.raw_splits 
-                    if any(k in doc.page_content.lower() for k in ["pemutusan", "phk", "pesangon", "pengakhiran", "penghargaan masa kerja", "pisal"])
+                    if any(k in doc.page_content.lower() for k in ["pemutusan", "phk", "pesangon", "pengakhiran", "penghargaan masa kerja"])
                 ]
             elif "cuti" in ql:
                 keyword_docs = [
@@ -168,7 +166,6 @@ with tab1:
                     if "cuti" in doc.page_content.lower()
                 ]
 
-            # Gabungkan hasil pencarian tanpa duplikasi, ambil maksimal 8 dokumen relevan
             seen = set()
             source_docs = []
             for d in keyword_docs + vector_docs:
@@ -178,7 +175,6 @@ with tab1:
                     source_docs.append(d)
             
             source_docs = source_docs[:8]
-
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
             messages = chat_prompt.format_messages(
