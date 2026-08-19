@@ -77,8 +77,8 @@ st.markdown(
 # Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
-if "raw_splits" not in st.session_state:
-  st.session_state.raw_splits = []
+if "raw_docs" not in st.session_state:
+  st.session_state.raw_docs = []
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
@@ -97,13 +97,14 @@ with tab1:
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
+        
+        # Simpan dokumen mentah per halaman untuk ekstraksi bab presisi
+        st.session_state.raw_docs = docs
+        
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000, chunk_overlap=100
         )
         splits = text_splitter.split_documents(docs)
-        
-        # Simpan teks mentah untuk pencarian langsung
-        st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         st.session_state.vector_store = Chroma.from_documents(
@@ -119,7 +120,7 @@ with tab1:
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.1,
-        max_tokens=1000,
+        max_tokens=1500,
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -129,7 +130,7 @@ with tab1:
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
                 "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan. "
                 "Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi dan profesional. "
-                "Jangan mengarang informasi di luar konteks dokumen."
+                "Jangan mengarang informasi di luar konteks dokumen[cite: 1]. TIDAK PERLU mencantumkan sitensi atau sumber dokumen."
             ),
         ),
         ("human", "Konteks Dokumen Resmi:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -147,37 +148,37 @@ with tab1:
         with st.spinner("Mencari jawaban akurat di dokumen..."):
           try:
             ql = user_query.lower()
-            source_docs = []
+            context_text = ""
             
-            # Filter langsung ke Bab X (PHK / Pasal 52-62) tanpa menyentuh Pasal 6
+            # --- DIRECT CHAPTER EXTRACTION UNTUK PHK ---
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
-                source_docs = [
-                    d for d in st.session_state.raw_splits
-                    if any(term in d.page_content.lower() for term in ["pasal 52", "pasal 53", "pasal 54", "pasal 55", "pasal 56", "pasal 57", "pasal 58", "pasal 59", "pasal 60", "pasal 61", "pasal 62", "pemutusan hubungan kerja", "pesangon"])
-                    and "pasal 6:" not in d.page_content.lower()
-                    and "penggolongan pekerja" not in d.page_content.lower()
-                ]
-            elif "cuti" in ql:
-                source_docs = [
-                    d for d in st.session_state.raw_splits
-                    if "cuti" in d.page_content.lower()
-                ]
+                chapter_x_texts = []
+                capturing = False
+                for doc in st.session_state.raw_docs:
+                    content = doc.page_content
+                    if "BAB X" in content or "PEMUTUSAN HUBUNGAN KERJA" in content:
+                        capturing = True
+                    if "BAB XI" in content or "PENYELESAIAN KELUHAN" in content:
+                        if capturing:
+                            break
+                    if capturing:
+                        chapter_x_texts.append(content)
+                
+                if chapter_x_texts:
+                    context_text = "\n\n".join(chapter_x_texts)
             
-            # Fallback ke retriever standar jika tidak ada filter manual
-            if not source_docs:
+            # Jika bukan PHK atau Bab X tidak tertangkap, gunakan retriever standar
+            if not context_text:
                 retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
-                source_docs = retriever.invoke(user_query)
-            else:
-                source_docs = source_docs[:6]
-
-            context_text = "\n\n".join([doc.page_content for doc in source_docs])
+                retrieved_docs = retriever.invoke(user_query)
+                context_text = "\n\n".join([d.page_content for d in retrieved_docs])
 
             messages = chat_prompt.format_messages(
                 context=context_text, question=user_query
             )
             response = llm.invoke(messages)
             
-            # Tampilkan hasil langsung secara bersih tanpa bagian citation
+            # Tampilkan hasil secara bersih tanpa panel citation
             st.markdown(response.content)
 
           except Exception as e:
@@ -232,16 +233,14 @@ with tab3:
 
             loader = PyPDFLoader(TARGET_PDF)
             docs = loader.load()
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000, chunk_overlap=100
-            )
+            st.session_state.raw_docs = docs
+
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
             splits = text_splitter.split_documents(docs)
             st.session_state.raw_splits = splits
 
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-            vector_store = Chroma.from_documents(
-                documents=splits, embedding=embeddings
-            )
+            vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
             st.session_state.vector_store = vector_store
 
             st.success("✅ Dokumen berhasil diperbarui! Silakan kembali ke tab 'Chat Karyawan'.")
