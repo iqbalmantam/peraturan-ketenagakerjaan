@@ -1,14 +1,15 @@
 import os
 
+# --- FIX UNTUK CHROMADB DI STREAMLIT CLOUD ---
 try:
-  import pysqlite3
-  import sys
-  sys.modules["sqlite3"] = pysqlite3
+    import pysqlite3
+    import sys
+    sys.modules["sqlite3"] = pysqlite3
 except ImportError:
-  pass
+    pass
+# ---------------------------------------------
 
 import streamlit as st
-from groq import Groq
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate
@@ -16,88 +17,134 @@ from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# Konfigurasi Dasar
-st.set_page_config(page_title="HR Q&A", layout="wide")
+# Konfigurasi Halaman Streamlit
+st.set_page_config(page_title="HR Policy Assistant", page_icon="🏢", layout="wide")
 
-# Styling
-st.markdown("<style>[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
+# Styling UI
+hide_streamlit_style = """
+    <style>
+    [data-testid="stSidebar"] {display: none;}
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-# Secrets
+# Ambil Konfigurasi dari Streamlit Secrets
 groq_api_key = st.secrets.get("GROQ_API_KEY") or (st.secrets.get("general") or {}).get("GROQ_API_KEY")
 admin_pass_secret = st.secrets.get("ADMIN_PASSWORD") or (st.secrets.get("general") or {}).get("ADMIN_PASSWORD") or "2273"
 
-if "vector_store" not in st.session_state: st.session_state.vector_store = None
+# Inisialisasi Session State
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = None
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
-# Fungsi Pemilih Model Dinamis (Aman dari Error 404)
-@st.cache_data(show_spinner=False)
-def get_safe_model(api_key):
-    try:
-        client = Groq(api_key=api_key)
-        models = client.models.list().data
-        # Cari model Llama yang aktif
-        for m in models:
-            if "llama" in m.id.lower() and "vision" not in m.id.lower():
-                return m.id
-        # Jika tidak ada Llama, ambil model teks pertama yang tersedia
-        for m in models:
-            if "whisper" not in m.id and "tts" not in m.id and "embedding" not in m.id:
-                return m.id
-        return models[0].id if models else "llama3-8b-8192"
-    except Exception:
-        return "llama3-8b-8192"
+# Judul Aplikasi
+st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
+st.markdown("Asisten cerdas untuk menjawab pertanyaan seputar aturan dan kebijakan perusahaan.")
 
-st.title("🏢 HR Policy Q&A Assistant")
+tab1, tab2, tab3 = st.tabs(["💬 Chat Karyawan", "📥 Download Dokumen", "🔐 Mode Admin"])
 
-tab1, tab2, tab3 = st.tabs(["💬 Chat", "📥 Download", "🔐 Admin"])
-
+# --- TAB 1: CHAT KARYAWAN ---
 with tab1:
-    # Load PDF
+    st.subheader("💬 Tanya Jawab Kebijakan Perusahaan")
+
+    # Load PDF otomatis jika vector store belum ada
     if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-        with st.spinner("Indexing dokumen..."):
-            loader = PyPDFLoader(TARGET_PDF)
-            docs = loader.load()
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-            splits = text_splitter.split_documents(docs)
-            embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-            st.session_state.vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
+        with st.spinner("Memproses dokumen peraturan..."):
+            try:
+                loader = PyPDFLoader(TARGET_PDF)
+                docs = loader.load()
+                
+                # Chunking super hemat token
+                text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=400, 
+                    chunk_overlap=40
+                )
+                splits = text_splitter.split_documents(docs)
+                
+                embeddings = HuggingFaceEmbeddings(
+                    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+                )
+                st.session_state.vector_store = Chroma.from_documents(
+                    documents=splits, embedding=embeddings
+                )
+            except Exception as e:
+                st.error(f"Gagal memuat dokumen: {e}")
 
     if st.session_state.vector_store and groq_api_key:
-        selected_model = get_safe_model(groq_api_key)
-        llm = ChatGroq(groq_api_key=groq_api_key, model_name=selected_model, temperature=0, max_tokens=512)
-        
-        user_query = st.chat_input("Tanyakan aturan perusahaan...")
+        # Menggunakan model llama-3.1-8b-instant dengan max_tokens aman
+        llm = ChatGroq(
+            groq_api_key=groq_api_key,
+            model_name="llama-3.1-8b-instant",
+            temperature=0.0,
+            max_tokens=350,  # Membatasi jawaban agar tidak terkena limit output
+        )
+
+        user_query = st.chat_input("Tanyakan tentang aturan cuti, PHK, klaim, dll...")
+
         if user_query:
             st.chat_message("user").markdown(user_query)
+
             with st.chat_message("assistant"):
-                with st.spinner("Mencari..."):
+                with st.spinner("Mencari jawaban..."):
                     try:
-                        retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3})
-                        docs = retriever.invoke(user_query)
+                        # Ambil hanya 2 potongan paling relevan untuk menghemat token secara drastis
+                        retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 2})
+                        source_docs = retriever.invoke(user_query)
                         
-                        context_text = "\n\n".join([d.page_content for d in docs])
-                        if len(context_text) > 2500:
-                            context_text = context_text[:2500] + "..."
+                        # Gabungkan teks & bersihkan spasi ganda
+                        raw_context = " ".join([d.page_content.replace("\n", " ") for d in source_docs])
+                        
+                        # Pemotongan Keras (Hard Limit): Maksimal 1200 karakter
+                        clean_context = raw_context[:1200]
 
+                        # Prompt ultra-ringkas
                         prompt = ChatPromptTemplate.from_template(
-                            "Jawab pertanyaan berikut hanya berdasarkan konteks.\n\nKonteks: {context}\n\nPertanyaan: {question}"
+                            "Jawab pertanyaan berikut HANYA berdasarkan konteks di bawah.\n"
+                            "Jika tidak ada di teks, katakan 'Informasi tidak ditemukan di dokumen.'\n\n"
+                            "Konteks: {context}\n\n"
+                            "Pertanyaan: {question}"
                         )
-                        response = llm.invoke(prompt.format(context=context_text, question=user_query))
-                        st.markdown(response.content)
-                    except Exception as e:
-                        st.error(f"Error: {e}")
 
+                        formatted_prompt = prompt.format(context=clean_context, question=user_query)
+                        response = llm.invoke(formatted_prompt)
+                        st.markdown(response.content)
+
+                    except Exception as e:
+                        st.error(f"Terjadi kesalahan: {e}")
+    else:
+        if not groq_api_key:
+            st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
+        else:
+            st.info("ℹ️ File PDF belum ditemukan di repositori.")
+
+# --- TAB 2: DOWNLOAD DOKUMEN ---
 with tab2:
+    st.subheader("📥 Unduh Peraturan Perusahaan")
     if os.path.exists(TARGET_PDF):
         with open(TARGET_PDF, "rb") as f:
-            st.download_button("Download PDF", f, file_name=TARGET_PDF)
+            st.download_button(
+                label="📥 Download Peraturan Perusahaan (PDF)",
+                data=f.read(),
+                file_name=TARGET_PDF,
+                mime="application/pdf",
+            )
+    else:
+        st.warning(f"⚠️ File `{TARGET_PDF}` tidak ditemukan.")
 
+# --- TAB 3: MODE ADMIN ---
 with tab3:
-    pwd = st.text_input("Password:", type="password")
+    st.subheader("🔐 Panel Admin")
+    pwd = st.text_input("Masukkan Password Admin:", type="password")
     if pwd == admin_pass_secret:
-        uploaded_file = st.file_uploader("Upload PDF baru", type=["pdf"])
+        uploaded_file = st.file_uploader("Upload PDF Peraturan Baru", type=["pdf"])
         if uploaded_file:
             with open(TARGET_PDF, "wb") as f:
                 f.write(uploaded_file.getbuffer())
-            st.success("Berhasil! Silakan refresh halaman.")
+            st.success("File berhasil diunggah! Silakan refresh halaman aplikasi.")
+
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
