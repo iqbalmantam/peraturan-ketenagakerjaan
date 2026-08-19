@@ -47,7 +47,7 @@ try:
   if "ADMIN_PASSWORD" in st.secrets:
     admin_pass_secret = st.secrets["ADMIN_PASSWORD"]
   elif "general" in st.secrets and "ADMIN_PASSWORD" in st.secrets["general"]:
-    admin_pass_secret = st.secrets["GENERAL"]["ADMIN_PASSWORD"]
+    admin_pass_secret = st.secrets["ADMIN_PASSWORD"]
 except Exception:
   pass
 
@@ -91,11 +91,10 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memuat dokumen peraturan perusahaan..."):
+    with st.spinner("Memproses seluruh dokumen peraturan perusahaan..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
-        # Chunk size disesuaikan agar pas dan aman dari limit token
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=800, chunk_overlap=150
         )
@@ -117,9 +116,8 @@ with tab1:
         max_tokens=800,
     )
     
-    # k dikembalikan ke 4 agar aman dari error context_length_exceeded
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 4}
+        search_kwargs={"k": 6}
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -144,17 +142,27 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban dalam dokumen..."):
+        with st.spinner("Mencari jawaban yang akurat dalam dokumen..."):
           try:
-            # Perluasan kata kunci agar istilah singkatan langsung menemukan pasal terkait
+            # Perluasan kata kunci pencarian
             search_q = user_query
             ql = user_query.lower()
-            if "phk" in ql or "pemutusan" in ql:
+            if "phk" in ql or "pemutusan" in ql or "hubungan kerja" in ql:
                 search_q = "pemutusan hubungan kerja PHK pesangon uang penghargaan masa kerja pengakhiran"
             elif "cuti" in ql:
                 search_q = "cuti cuti tahunan hak cuti bersama"
 
             source_docs = retriever.invoke(search_q)
+
+            # --- SMART FILTER: Buang dokumen nyasar seperti halaman 13 jika mencari PHK ---
+            if "phk" in ql or "pemutusan" in ql:
+                filtered_docs = [
+                    doc for doc in source_docs 
+                    if any(kw in doc.page_content.lower() for kw in ["pemutusan", "phk", "pesangon", "pengakhiran", "pisah"])
+                ]
+                if filtered_docs:
+                    source_docs = filtered_docs
+
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
             messages = chat_prompt.format_messages(
