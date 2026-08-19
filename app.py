@@ -91,12 +91,12 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memproses seluruh dokumen peraturan perusahaan..."):
+    with st.spinner("Memproses seluruh dokumen peraturan perusahaan (52 Halaman)..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=800, chunk_overlap=150
+            chunk_size=1000, chunk_overlap=200
         )
         splits = text_splitter.split_documents(docs)
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -117,7 +117,7 @@ with tab1:
     )
     
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 6}
+        search_kwargs={"k": 5}
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -126,8 +126,8 @@ with tab1:
             (
                 "Anda adalah asisten HR perusahaan yang profesional dan akurat."
                 " Jawablah pertanyaan karyawan HANYA berdasarkan konteks dokumen kebijakan perusahaan"
-                " yang diberikan. Jika informasi tidak ada, katakan dengan persis:"
-                " 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' Dilarang mengulang-ulang kalimat."
+                " yang diberikan. Jika informasi tidak ada di dalam konteks, katakan dengan persis:"
+                " 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' Dilarang berhalusinasi atau mengulang kalimat."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -142,26 +142,21 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban yang akurat dalam dokumen..."):
+        with st.spinner("Mencari pasal yang sesuai dari 52 halaman dokumen..."):
           try:
-            # Perluasan kata kunci pencarian
-            search_q = user_query
+            # --- PENCARIAN LANGSUNG BERDASARKAN KATA KUNCI SPESIFIK ---
             ql = user_query.lower()
-            if "phk" in ql or "pemutusan" in ql or "hubungan kerja" in ql:
-                search_q = "pemutusan hubungan kerja PHK pesangon uang penghargaan masa kerja pengakhiran"
-            elif "cuti" in ql:
-                search_q = "cuti cuti tahunan hak cuti bersama"
-
-            source_docs = retriever.invoke(search_q)
-
-            # --- SMART FILTER: Buang dokumen nyasar seperti halaman 13 jika mencari PHK ---
             if "phk" in ql or "pemutusan" in ql:
-                filtered_docs = [
-                    doc for doc in source_docs 
-                    if any(kw in doc.page_content.lower() for kw in ["pemutusan", "phk", "pesangon", "pengakhiran", "pisah"])
-                ]
-                if filtered_docs:
-                    source_docs = filtered_docs
+                # Memaksa pencarian mencari kata-kata kunci spesifik bab akhir
+                source_docs = st.session_state.vector_store.similarity_search(
+                    "Pemutusan Hubungan Kerja PHK Pesangon Uang Penghargaan Masa Kerja", k=5
+                )
+            elif "cuti" in ql:
+                source_docs = st.session_state.vector_store.similarity_search(
+                    "Cuti Cuti Tahunan Hak Cuti", k=5
+                )
+            else:
+                source_docs = retriever.invoke(user_query)
 
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
@@ -253,7 +248,7 @@ with tab3:
             docs = loader.load()
 
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=800, chunk_overlap=150
+                chunk_size=1000, chunk_overlap=200
             )
             splits = text_splitter.split_documents(docs)
 
