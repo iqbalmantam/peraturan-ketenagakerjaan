@@ -199,11 +199,11 @@ with tab1:
 
           except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses jawaban: {e}")
-      else:
-        if not groq_api_key:
-          st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
-        else:
-          st.info("ℹ️ File dokumen belum terdeteksi. Pastikan file sudah di-commit di GitHub.")
+  else:
+    if not groq_api_key:
+      st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
+    else:
+      st.info("ℹ️ File dokumen belum terdeteksi. Pastikan file sudah di-commit di GitHub.")
 
 # --- TAB 2: DOWNLOAD DOKUMEN ---
 with tab2:
