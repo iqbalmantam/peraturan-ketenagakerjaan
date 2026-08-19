@@ -181,11 +181,11 @@ with tab1:
 
           except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses jawaban: {e}")
-      else:
-        if not groq_api_key:
-          st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
-        else:
-          st.info("ℹ️ File dokumen belum terdeteksi. Pastikan file sudah di-commit di GitHub.")
+  else:
+    if not groq_api_key:
+      st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
+    else:
+      st.info("ℹ️ File dokumen belum terdeteksi. Pastikan file sudah di-commit di GitHub.")
 
 # --- TAB 2: DOWNLOAD DOKUMEN ---
 with tab2:
@@ -251,11 +251,11 @@ with tab3:
             st.success("✅ Dokumen berhasil diperbarui! Silakan kembali ke tab 'Chat Karyawan'.")
           except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses dokumen: {e}")
-      else:
-        if input_password:
-          st.error("❌ Password salah!")
-        else:
-          st.info("ℹ️ Masukkan password admin untuk mengakses panel manajemen.")
+  else:
+    if input_password:
+      st.error("❌ Password salah!")
+    else:
+      st.info("ℹ️ Masukkan password admin untuk mengakses panel manajemen.")
 
 # Watermark di bawah halaman utama
 st.markdown("---")
