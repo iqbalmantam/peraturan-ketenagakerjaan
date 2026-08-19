@@ -102,7 +102,6 @@ with tab1:
         )
         splits = text_splitter.split_documents(docs)
         
-        # Simpan raw_splits untuk algoritma scoring pencarian
         st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -151,29 +150,31 @@ with tab1:
       with st.chat_message("assistant"):
         with st.spinner("Mencari jawaban secara presisi dari 52 halaman dokumen..."):
           try:
-            # --- ALGORITMA PENCARIAN PRESISI BERBASIS TOKEN & NORMALISASI TEKS ---
             query_clean = user_query.lower().strip()
-            tokens = [t for t in query_clean.split() if len(t) > 2] # Ambil kata penting (> 2 huruf)
+            
+            # Deteksi apakah query mencari topik PHK / Pemutusan Hubungan Kerja
+            is_phk_query = any(k in query_clean for k in ["phk", "pemutus", "pesangon", "pengakhiran"])
             
             scored_docs = []
             for doc in st.session_state.raw_splits:
-                # Normalisasi teks dokumen: ratakan newline menjadi spasi
                 content_normalized = doc.page_content.lower().replace("\n", " ")
                 score = 0
                 
-                # Beri poin tinggi jika frasa persis ditemukan
-                if query_clean in content_normalized:
-                    score += 20
+                # --- FILTER KETAT (MENCEGAH HALAMAN 9 NYASAR) ---
+                if is_phk_query:
+                    # Jika mencari PHK, chunk WAJIB memiliki salah satu kata kunci ini. Jika tidak, skip total!
+                    if not any(k in content_normalized for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "uang pisah"]):
+                        continue
                 
-                # Beri poin untuk setiap token penting yang cocok
+                # Beri poin jika frasa persis cocok
+                if query_clean in content_normalized:
+                    score += 30
+                
+                # Beri poin untuk kata-kata penting di dalam query
+                tokens = [t for t in query_clean.split() if len(t) > 2]
                 for token in tokens:
                     if token in content_normalized:
-                        score += 3
-                        
-                # Booster khusus untuk istilah hukum/ketenagakerjaan krusial
-                if any(k in query_clean for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
-                    if any(k in content_normalized for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "uang pisah"]):
-                        score += 15
+                        score += 5
 
                 if score > 0:
                     scored_docs.append((score, doc))
@@ -182,13 +183,15 @@ with tab1:
             scored_docs.sort(key=lambda x: x[0], reverse=True)
             
             if scored_docs:
-                # Ambil 5 dokumen dengan skor tertinggi
                 source_docs = [doc for score, doc in scored_docs[:5]]
             else:
-                # Fallback ke vector retriever standar jika tidak ada skor yang cocok
-                source_docs = retriever.invoke(user_query)
+                # Jika sama sekali tidak ada yang cocok dengan filter ketat, berikan list kosong agar AI bilang tidak ditemukan
+                source_docs = []
 
-            context_text = "\n\n".join([doc.page_content for doc in source_docs])
+            if source_docs:
+                context_text = "\n\n".join([doc.page_content for doc in source_docs])
+            else:
+                context_text = "Tidak ada informasi yang relevan."
 
             messages = chat_prompt.format_messages(
                 context=context_text, question=user_query
@@ -198,12 +201,13 @@ with tab1:
 
             st.markdown(answer)
 
-            with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
-              for i, doc in enumerate(source_docs):
-                page_num = doc.metadata.get("page", 0)
-                st.markdown(f"**Sumber {i+1} (Halaman {page_num + 1}):**")
-                st.markdown(f"> {doc.page_content[:300]}...")
-                st.markdown("---")
+            if source_docs:
+              with st.expander("📚 Lihat Sumber Dokumen (Citation)"):
+                for i, doc in enumerate(source_docs):
+                  page_num = doc.metadata.get("page", 0)
+                  st.markdown(f"**Sumber {i+1} (Halaman {page_num + 1}):**")
+                  st.markdown(f"> {doc.page_content[:300]}...")
+                  st.markdown("---")
           except Exception as e:
             st.error(
                 f"Terjadi kesalahan saat memproses jawaban dari AI. Detail: {e}"
