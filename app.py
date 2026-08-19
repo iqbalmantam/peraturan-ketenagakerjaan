@@ -94,10 +94,10 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    # Menggunakan model llama-3.3-70b-versatile dengan format prompt yang valid
+    # Menggunakan model llama3-8b-8192 yang stabil dan universal di Groq
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name="llama-3.3-70b-versatile",
+        model_name="llama3-8b-8192",
         temperature=0.1,
     )
     retriever = st.session_state.vector_store.as_retriever(
@@ -109,7 +109,6 @@ with tab1:
       return "\n\n".join(doc.page_content for doc in docs)
 
 
-    # Struktur ChatPromptTemplate yang benar berbasis role (system & human)
     prompt = ChatPromptTemplate.from_messages([
         (
             "system",
