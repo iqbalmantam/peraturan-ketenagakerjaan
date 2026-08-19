@@ -118,8 +118,8 @@ with tab1:
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
-        temperature=0.0,  # Dibuat 0.0 agar AI fokus total pada teks dan tidak berimajinasi
-        max_tokens=1024,
+        temperature=0.0,  # 0.0 agar AI fokus total pada teks dan tidak berimajinasi
+        max_tokens=1500,
     )
     
     retriever = st.session_state.vector_store.as_retriever(
@@ -132,8 +132,12 @@ with tab1:
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
                 "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan di bawah ini. "
-                "DILARANG KERAS mengarang, menebak-nebak, atau menghubungkan dengan pasal lain di luar konteks yang diberikan. "
-                "Sajikan jawaban dalam bentuk poin-poin yang rapi, profesional, dan merujuk langsung pada isi pasal dalam dokumen."
+                "DILARANG KERAS menggunakan Pasal 6 atau informasi penggolongan karyawan untuk menjawab pertanyaan tentang PHK. "
+                "Sajikan jawaban dengan terstruktur rapi ke dalam bagian-bagian berikut jika relevan:\n"
+                "1. Prinsip Umum (Pasal 52)\n"
+                "2. Ketentuan Khusus Berdasarkan Kategori (Pasal 53–61)\n"
+                "3. Hutang Pekerja Terkait PHK (Pasal 62)\n"
+                "Gunakan format poin-poin yang jelas dan profesional."
             ),
         ),
         ("human", "Konteks Dokumen Resmi:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -148,18 +152,21 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari pasal resmi di dalam dokumen..."):
+        with st.spinner("Mencari pasal resmi PHK di dalam dokumen..."):
           try:
             ql = user_query.lower()
             
-            # --- STRICT FILTERING: Ambil langsung Bab X (Pasal 52-62) jika menanyakan PHK ---
+            # --- STRICT NEGATIVE FILTERING: Blokir Pasal 6, Paksa ambil Bab X (Pasal 52-62) ---
             if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah", "pemberhentian"]):
                 source_docs = [
                     doc for doc in st.session_state.raw_splits 
-                    if any(term in doc.page_content.lower() for term in ["bab x", "pasal 52", "pasal 53", "pasal 54", "pasal 55", "pasal 56", "pasal 57", "pasal 58", "pasal 59", "pasal 60", "pasal 61", "pasal 62"])
+                    if ("pasal 6" not in doc.page_content.lower() and "penggolongan pekerja" not in doc.page_content.lower()) 
+                    and any(term in doc.page_content.lower() for term in ["bab x", "pasal 52", "pasal 53", "pasal 54", "pasal 55", "pasal 56", "pasal 57", "pasal 58", "pasal 59", "pasal 60", "pasal 61", "pasal 62", "termination of employment"])
                 ]
                 if not source_docs:
                     source_docs = retriever.invoke(user_query)
+                else:
+                    source_docs = source_docs[:8]
             elif "cuti" in ql:
                 source_docs = [
                     doc for doc in st.session_state.raw_splits 
@@ -254,7 +261,7 @@ with tab3:
             "Sedang memproses dokumen baru dan memperbarui indeks vektor..."
         ):
           try:
-            with open(TARGET_PDF, "wb") as f:
+            with open(TARGET_PDF, "wb`") as f:
               f.write(uploaded_file.getbuffer())
 
             loader = PyPDFLoader(TARGET_PDF)
