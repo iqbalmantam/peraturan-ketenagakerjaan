@@ -94,10 +94,10 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    # Menggunakan model llama3-70b-8192 yang stabil dan universal di Groq
+    # Menggunakan model llama-3.3-70b-versatile dengan format prompt yang valid
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name="llama3-70b-8192",
+        model_name="llama-3.3-70b-versatile",
         temperature=0.1,
     )
     retriever = st.session_state.vector_store.as_retriever(
@@ -109,15 +109,21 @@ with tab1:
       return "\n\n".join(doc.page_content for doc in docs)
 
 
-    template = (
-        "Anda adalah asisten HR yang ramah dan profesional.\n"
-        "Gunakan konteks potongan dokumen kebijakan perusahaan berikut untuk menjawab pertanyaan.\n"
-        "Jika Anda tidak tahu jawabannya, katakan dengan jujur bahwa informasi tersebut tidak ditemukan dalam dokumen.\n"
-        "Sertakan kutipan atau referensi halaman dokumen jika tersedia pada konteks.\n\n"
-        "Konteks:\n{context}\n\n"
-        "Pertanyaan: {question}"
-    )
-    prompt = ChatPromptTemplate.from_template(template)
+    # Struktur ChatPromptTemplate yang benar berbasis role (system & human)
+    prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            (
+                "Anda adalah asisten HR yang ramah dan profesional.\nGunakan"
+                " konteks potongan dokumen kebijakan perusahaan berikut untuk"
+                " menjawab pertanyaan.\nJika Anda tidak tahu jawabannya,"
+                " katakan dengan jujur bahwa informasi tersebut tidak ditemukan"
+                " dalam dokumen.\nSertakan kutipan atau referensi halaman"
+                " dokumen jika tersedia pada konteks.\n\nKonteks:\n{context}"
+            ),
+        ),
+        ("human", "{question}"),
+    ])
 
     user_query = st.chat_input(
         "Tanyakan tentang aturan cuti, klaim, atau SOP perusahaan..."
