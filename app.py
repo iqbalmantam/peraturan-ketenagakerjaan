@@ -110,26 +110,28 @@ with tab1:
   if st.session_state.vector_store is not None and groq_api_key:
     selected_model = get_safe_model(groq_api_key)
     
+    # --- PENGAMANAN TOKEN DAN TEMPERATURE ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.0,
-        max_tokens=1024,
+        max_tokens=512,  # Membatasi panjang output untuk mencegah looping tak terbatas
     )
     
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 6}
+        search_kwargs={"k": 4}
     )
 
+    # --- PROMPT ANTI-LOOPING ---
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini secara lugas, jelas, dan akurat. "
-                "Jika informasi tersebut ada dalam konteks, jelaskan apa adanya sesuai dokumen. "
-                "Jika informasi tidak ditemukan sama sekali, katakan dengan jujur: 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' "
-                "DILARANG keras berhalusinasi atau menebak-nebak."
+                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini. "
+                "Jika informasi tentang topik tersebut tidak ditemukan di dalam konteks, Anda WAJIB menjawab dengan persis: "
+                "'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' "
+                "PERINGATAN KERAS: Dilarang keras melakukan pengulangan teks (looping), dilarang membuat daftar angka bernomor berturut-turut secara berlebihan, dan dilarang berhalusinasi."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -144,18 +146,23 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban dari 52 halaman dokumen..."):
+        with st.spinner("Mencari jawaban dari dokumen..."):
           try:
             ql = user_query.lower()
             
-            # Perluasan query pencarian otomatis untuk menangani singkatan
-            search_query = user_query
-            if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran"]):
-                search_query = "pemutusan hubungan kerja PHK pesangon uang penghargaan masa kerja"
+            # Pencarian spesifik untuk menghindari pasal yang salah
+            if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran"]):
+                # Jika mencari PHK, pastikan retriever mengambil teks yang benar-benar memuat kata kunci
+                source_docs = st.session_state.vector_store.similarity_search(
+                    "Pemutusan Hubungan Kerja PHK Pesangon Pengakhiran", k=4
+                )
             elif "cuti" in ql:
-                search_query = "cuti cuti tahunan hak cuti bersama"
+                source_docs = st.session_state.vector_store.similarity_search(
+                    "Cuti Cuti Tahunan Hak Cuti", k=4
+                )
+            else:
+                source_docs = retriever.invoke(user_query)
 
-            source_docs = retriever.invoke(search_query)
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
             messages = chat_prompt.format_messages(
