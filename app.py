@@ -30,10 +30,23 @@ if "vector_store" not in st.session_state: st.session_state.vector_store = None
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
-# Fungsi Model
+# Fungsi Pemilih Model Dinamis (Aman dari Error 404)
 @st.cache_data(show_spinner=False)
-def get_model_id():
-    return "llama-3.1-8b-instant"
+def get_safe_model(api_key):
+    try:
+        client = Groq(api_key=api_key)
+        models = client.models.list().data
+        # Cari model Llama yang aktif
+        for m in models:
+            if "llama" in m.id.lower() and "vision" not in m.id.lower():
+                return m.id
+        # Jika tidak ada Llama, ambil model teks pertama yang tersedia
+        for m in models:
+            if "whisper" not in m.id and "tts" not in m.id and "embedding" not in m.id:
+                return m.id
+        return models[0].id if models else "llama3-8b-8192"
+    except Exception:
+        return "llama3-8b-8192"
 
 st.title("🏢 HR Policy Q&A Assistant")
 
@@ -45,14 +58,14 @@ with tab1:
         with st.spinner("Indexing dokumen..."):
             loader = PyPDFLoader(TARGET_PDF)
             docs = loader.load()
-            # Chunk lebih kecil
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
             splits = text_splitter.split_documents(docs)
             embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
             st.session_state.vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
 
     if st.session_state.vector_store and groq_api_key:
-        llm = ChatGroq(groq_api_key=groq_api_key, model_name=get_model_id(), temperature=0, max_tokens=512)
+        selected_model = get_safe_model(groq_api_key)
+        llm = ChatGroq(groq_api_key=groq_api_key, model_name=selected_model, temperature=0, max_tokens=512)
         
         user_query = st.chat_input("Tanyakan aturan perusahaan...")
         if user_query:
@@ -60,11 +73,9 @@ with tab1:
             with st.chat_message("assistant"):
                 with st.spinner("Mencari..."):
                     try:
-                        # Ambil konteks lebih sedikit (k=3)
                         retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3})
                         docs = retriever.invoke(user_query)
                         
-                        # Gabung dan potong paksa jika > 2500 karakter
                         context_text = "\n\n".join([d.page_content for d in docs])
                         if len(context_text) > 2500:
                             context_text = context_text[:2500] + "..."
