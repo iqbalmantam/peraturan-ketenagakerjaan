@@ -12,7 +12,6 @@ except ImportError:
 # ---------------------------------------------
 
 import streamlit as st
-from groq import Groq
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.output_parsers import StrOutputParser
@@ -54,37 +53,6 @@ try:
 except Exception:
   pass
 
-# Fungsi Auto-Discovery Model (Mencari model terbaik yang aktif di API Key Anda)
-@st.cache_data(show_spinner=False)
-def get_best_active_model(api_key):
-    try:
-        client = Groq(api_key=api_key)
-        models_data = client.models.list().data
-        available_models = [m.id for m in models_data]
-        
-        # Urutan prioritas model
-        priorities = [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-70b-versatile",
-            "llama-3.1-8b-instant",
-            "llama3-70b-8192",
-            "llama3-8b-8192",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it"
-        ]
-        
-        for p in priorities:
-            if p in available_models:
-                return p
-                
-        for model in available_models:
-            if "whisper" not in model.lower() and "vision" not in model.lower():
-                return model
-                
-        return "llama-3.1-8b-instant" 
-    except Exception:
-        return "llama-3.1-8b-instant"
-
 # Judul Aplikasi
 st.title("🏢 HR Policy & Employee Handbook Q&A Assistant")
 st.markdown(
@@ -125,17 +93,15 @@ with tab1:
         st.error(f"Gagal memuat dokumen otomatis: {e}")
 
   if st.session_state.vector_store is not None and groq_api_key:
-    best_model_id = get_best_active_model(groq_api_key)
-    
-    # --- FIX UNTUK LENGTH ERROR (MAX TOKENS) ---
+    # --- MENGGUNAKAN MODEL TERBAIK & TERCERDAS (LLAMA 3.3 70B) ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
-        model_name=best_model_id,
+        model_name="llama-3.3-70b-versatile",
         temperature=0.1,
-        max_tokens=1024, # Membatasi panjang jawaban agar sisa memori cukup untuk membaca PDF
+        max_tokens=1024,  # Menjaga kapasitas token agar stabil
     )
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 4} # Mengambil 4 potongan dokumen agar lebih akurat
+        search_kwargs={"k": 4}
     )
 
     def format_docs(docs):
@@ -164,7 +130,7 @@ Jawaban:"""
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner(f"Mencari jawaban menggunakan AI ({best_model_id})..."):
+        with st.spinner("Mencari jawaban terbaik..."):
           try:
             source_docs = retriever.invoke(user_query)
             context_text = format_docs(source_docs)
