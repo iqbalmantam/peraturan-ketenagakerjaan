@@ -124,15 +124,14 @@ with tab1:
         search_kwargs={"k": 6}
     )
 
-    # --- PROMPT DIPERKETAT AGAR TIDAK ADA META-KOMENTAR ---
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Tugas Anda adalah menjawab pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini. "
-                "Berikan jawaban yang lugas, jelas, dan profesional dalam bentuk poin-poin atau paragraf rapi. "
-                "DILARANG KERAS menuliskan meta-komentar, penjelasan tentang cara menjawab, atau mengulang instruksi. Langsung berikan isi jawabannya."
+                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini secara lugas, jelas, dan akurat. "
+                "Jika informasi tidak ditemukan sama sekali di dalam konteks, katakan dengan jujur: 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' "
+                "DILARANG keras berhalusinasi, menebak-nebak, atau membuat jawaban di luar konteks dokumen."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -147,34 +146,31 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban komprehensif dari dokumen..."):
+        with st.spinner("Mencari pasal yang tepat dari 52 halaman dokumen..."):
           try:
             ql = user_query.lower()
             
-            # Hybrid search untuk mengambil pasal-pasal krusial secara akurat
-            vector_docs = retriever.invoke(user_query)
-            keyword_docs = []
-            
-            if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran", "kerja"]):
-                keyword_docs = [
+            # --- STRICT KEYWORD ROUTING (Pencarian Mutlak Berdasarkan Kata Kunci) ---
+            if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
+                # Ambil langsung potongan teks yang mengandung istilah PHK/Pesangon
+                source_docs = [
                     doc for doc in st.session_state.raw_splits 
                     if any(k in doc.page_content.lower() for k in ["pemutusan", "phk", "pesangon", "pengakhiran", "penghargaan masa kerja"])
                 ]
+                if not source_docs:
+                    source_docs = retriever.invoke(user_query)
+                else:
+                    source_docs = source_docs[:6]
             elif "cuti" in ql:
-                keyword_docs = [
+                source_docs = [
                     doc for doc in st.session_state.raw_splits 
                     if "cuti" in doc.page_content.lower()
-                ]
+                ][:6]
+                if not source_docs:
+                    source_docs = retriever.invoke(user_query)
+            else:
+                source_docs = retriever.invoke(user_query)
 
-            seen = set()
-            source_docs = []
-            for d in keyword_docs + vector_docs:
-                identifier = (d.metadata.get("page"), d.page_content[:50])
-                if identifier not in seen:
-                    seen.add(identifier)
-                    source_docs.append(d)
-            
-            source_docs = source_docs[:8]
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
             messages = chat_prompt.format_messages(
