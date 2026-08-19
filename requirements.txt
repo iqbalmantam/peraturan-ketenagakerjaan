@@ -1,11 +1,3 @@
 streamlit
-groq
-langchain
-langchain-community
-langchain-groq
-langchain-huggingface
-langchain-text-splitters
-chromadb
-pysqlite3-binary
-sentence-transformers
+google-generativeai
 pypdf
