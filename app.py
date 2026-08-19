@@ -110,16 +110,16 @@ with tab1:
   if st.session_state.vector_store is not None and groq_api_key:
     selected_model = get_safe_model(groq_api_key)
     
+    # --- PERBAIKAN UTAMA: Temperature dinaikkan ke 0.3 untuk mencegah infinite loop ---
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
-        temperature=0.1,
-        max_tokens=1024,
+        temperature=0.3,
+        max_tokens=800,
     )
     
-    # Retriever standar ditingkatkan kapasitasnya ke k=8 agar menangkap lebih banyak konteks
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 8}
+        search_kwargs={"k": 6}
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
@@ -127,8 +127,8 @@ with tab1:
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan perusahaan yang diberikan di bawah ini secara lengkap, jelas, dan profesional. "
-                "Jika informasi benar-benar tidak ada di dalam konteks, katakan: 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.'"
+                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini secara jelas dan profesional. "
+                "Jika informasi tidak ditemukan di dalam konteks, cukup jawab: 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.'"
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -145,7 +145,6 @@ with tab1:
       with st.chat_message("assistant"):
         with st.spinner("Mencari jawaban dari dokumen..."):
           try:
-            # Pencarian vektor murni yang mencakup berbagai variasi teks di 52 halaman
             source_docs = retriever.invoke(user_query)
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
