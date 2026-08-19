@@ -65,6 +65,9 @@ st.markdown(
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
 
+# Nama File Utama dari GitHub
+TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
+
 # Gunakan Tab di Header Atas sebagai Menu Navigasi Utama
 tab1, tab2, tab3 = st.tabs(
     ["💬 Chat Karyawan", "📥 Download Dokumen", "🔐 Mode Admin"]
@@ -73,6 +76,24 @@ tab1, tab2, tab3 = st.tabs(
 # --- TAB 1: CHAT KARYAWAN ---
 with tab1:
   st.subheader("💬 Tanya Jawab Kebijakan Perusahaan")
+
+  # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
+  if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
+    with st.spinner("Memuat dokumen peraturan perusahaan secara otomatis..."):
+      try:
+        loader = PyPDFLoader(TARGET_PDF)
+        docs = loader.load()
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000, chunk_overlap=200
+        )
+        splits = text_splitter.split_documents(docs)
+        embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        st.session_state.vector_store = Chroma.from_documents(
+            documents=splits, embedding=embeddings
+        )
+      except Exception as e:
+        st.error(f"Gagal memuat dokumen otomatis: {e}")
+
   if st.session_state.vector_store is not None and groq_api_key:
     llm = ChatGroq(
         groq_api_key=groq_api_key,
@@ -131,10 +152,13 @@ with tab1:
               st.markdown(f"> {doc.page_content[:300]}...")
               st.markdown("---")
   else:
-    st.info(
-        "ℹ️ Belum ada dokumen kebijakan yang diunggah. Silakan minta Admin"
-        " untuk mengunggah dokumen melalui menu **Mode Admin** di atas."
-    )
+    if not groq_api_key:
+      st.warning("⚠️ `GROQ_API_KEY` belum dikonfigurasi di Streamlit Secrets.")
+    else:
+      st.info(
+          "ℹ️ File dokumen belum terdeteksi. Pastikan file"
+          f" `{TARGET_PDF}` sudah di-commit dengan benar di GitHub."
+      )
 
 # --- TAB 2: DOWNLOAD DOKUMEN ---
 with tab2:
@@ -144,20 +168,18 @@ with tab2:
       " bawah ini."
   )
 
-  default_doc_path = "peraturan_perusahaan.pdf"
-  if os.path.exists(default_doc_path):
-    with open(default_doc_path, "rb") as pdf_file:
+  if os.path.exists(TARGET_PDF):
+    with open(TARGET_PDF, "rb") as pdf_file:
       PDFbyte = pdf_file.read()
     st.download_button(
         label="📥 Download Peraturan Perusahaan (PDF)",
         data=PDFbyte,
-        file_name="Peraturan_Perusahaan.pdf",
+        file_name=TARGET_PDF,
         mime="application/pdf",
     )
   else:
     st.warning(
-        "⚠️ File dokumen belum tersedia. Silakan hubungi Admin untuk mengunggah"
-        " dokumen."
+        f"⚠️ File `{TARGET_PDF}` belum ditemukan di repositori GitHub."
     )
 
 # --- TAB 3: MODE ADMIN ---
@@ -170,52 +192,57 @@ with tab3:
   if input_password == admin_pass_secret:
     st.success("✅ Autentikasi Admin Berhasil!")
     st.markdown("---")
-    st.subheader("📁 Unggah Dokumen Peraturan Baru")
-    uploaded_file = st.file_uploader(
-        "Pilih file PDF Peraturan/Handbook", type=["pdf"]
+    st.subheader("📁 Perbarui Dokumen Peraturan")
+    st.markdown(
+        "Jika Anda ingin mengganti dokumen, silakan unggah file PDF baru di"
+        " bawah ini:"
     )
-    process_btn = st.button("Proses & Simpan Dokumen")
 
-    if process_btn:
+    with st.form("admin_upload_form"):
+      uploaded_file = st.file_uploader(
+          "Pilih file PDF Peraturan/Handbook baru", type=["pdf"]
+      )
+      submit_btn = st.form_submit_button("Proses & Perbarui Dokumen")
+
+    if submit_btn:
       if not groq_api_key:
         st.error("❌ Groq API Key belum diatur di Streamlit Secrets.")
       elif not uploaded_file:
-        st.error("❌ Mohon unggah file PDF terlebih dahulu.")
+        st.error("❌ Mohon pilih file PDF terlebih dahulu.")
       else:
         with st.spinner(
-            "Sedang memproses dokumen dan membuat indeks vektor..."
+            "Sedang memproses dokumen baru dan memperbarui indeks vektor..."
         ):
-          temp_file_path = f"./temp_{uploaded_file.name}"
-          with open(temp_file_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
+          try:
+            # Simpan menimpa file utama
+            with open(TARGET_PDF, "wb") as f:
+              f.write(uploaded_file.getbuffer())
 
-          with open("peraturan_perusahaan.pdf", "wb") as f:
-            f.write(uploaded_file.getbuffer())
+            loader = PyPDFLoader(TARGET_PDF)
+            docs = loader.load()
 
-          loader = PyPDFLoader(temp_file_path)
-          docs = loader.load()
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000, chunk_overlap=200
+            )
+            splits = text_splitter.split_documents(docs)
 
-          text_splitter = RecursiveCharacterTextSplitter(
-              chunk_size=1000, chunk_overlap=200
-          )
-          splits = text_splitter.split_documents(docs)
+            embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+            vector_store = Chroma.from_documents(
+                documents=splits, embedding=embeddings
+            )
+            st.session_state.vector_store = vector_store
 
-          embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-          vector_store = Chroma.from_documents(
-              documents=splits, embedding=embeddings
-          )
-          st.session_state.vector_store = vector_store
-
-          os.remove(temp_file_path)
-          st.success(
-              "✅ Dokumen berhasil diproses dan disimpan! Silakan gunakan tab"
-              " Chat Karyawan."
-          )
+            st.success(
+                "✅ Dokumen berhasil diperbarui! Silakan kembali ke tab 'Chat"
+                " Karyawan'."
+            )
+          except Exception as e:
+            st.error(f"Terjadi kesalahan saat memproses dokumen: {e}")
   else:
     if input_password:
       st.error("❌ Password salah!")
     else:
-      st.info("ℹ️ Masukkan password admin untuk mengakses menu upload.")
+      st.info("ℹ️ Masukkan password admin untuk mengakses panel manajemen.")
 
 # Watermark di bawah halaman utama
 st.markdown("---")
