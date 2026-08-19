@@ -77,8 +77,6 @@ st.markdown(
 # Inisialisasi Sesi State
 if "vector_store" not in st.session_state:
   st.session_state.vector_store = None
-if "raw_splits" not in st.session_state:
-  st.session_state.raw_splits = []
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
@@ -101,7 +99,6 @@ with tab1:
             chunk_size=1000, chunk_overlap=200
         )
         splits = text_splitter.split_documents(docs)
-        st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         st.session_state.vector_store = Chroma.from_documents(
@@ -129,9 +126,10 @@ with tab1:
             "system",
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
-                "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini secara lugas, jelas, dan akurat. "
-                "Jika informasi tidak ditemukan sama sekali di dalam konteks, katakan dengan jujur: 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' "
-                "DILARANG keras berhalusinasi, menebak-nebak, atau membuat jawaban di luar konteks dokumen."
+                "Jawablah pertanyaan karyawan berdasarkan teks konteks dokumen kebijakan yang diberikan di bawah ini secara lugas, jelas, dan akurat. "
+                "Jika informasi tersebut ada dalam konteks, jelaskan apa adanya sesuai dokumen. "
+                "Jika informasi tidak ditemukan sama sekali, katakan dengan jujur: 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' "
+                "DILARANG keras berhalusinasi atau menebak-nebak."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -146,31 +144,18 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari pasal yang tepat dari 52 halaman dokumen..."):
+        with st.spinner("Mencari jawaban dari 52 halaman dokumen..."):
           try:
             ql = user_query.lower()
             
-            # --- STRICT KEYWORD ROUTING (Pencarian Mutlak Berdasarkan Kata Kunci) ---
-            if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran", "pisah"]):
-                # Ambil langsung potongan teks yang mengandung istilah PHK/Pesangon
-                source_docs = [
-                    doc for doc in st.session_state.raw_splits 
-                    if any(k in doc.page_content.lower() for k in ["pemutusan", "phk", "pesangon", "pengakhiran", "penghargaan masa kerja"])
-                ]
-                if not source_docs:
-                    source_docs = retriever.invoke(user_query)
-                else:
-                    source_docs = source_docs[:6]
+            # Perluasan query pencarian otomatis untuk menangani singkatan
+            search_query = user_query
+            if any(k in ql for k in ["phk", "pemutusan", "pesangon", "pengakhiran"]):
+                search_query = "pemutusan hubungan kerja PHK pesangon uang penghargaan masa kerja"
             elif "cuti" in ql:
-                source_docs = [
-                    doc for doc in st.session_state.raw_splits 
-                    if "cuti" in doc.page_content.lower()
-                ][:6]
-                if not source_docs:
-                    source_docs = retriever.invoke(user_query)
-            else:
-                source_docs = retriever.invoke(user_query)
+                search_query = "cuti cuti tahunan hak cuti bersama"
 
+            source_docs = retriever.invoke(search_query)
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
             messages = chat_prompt.format_messages(
@@ -264,7 +249,6 @@ with tab3:
                 chunk_size=1000, chunk_overlap=200
             )
             splits = text_splitter.split_documents(docs)
-            st.session_state.raw_splits = splits
 
             embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
             vector_store = Chroma.from_documents(
