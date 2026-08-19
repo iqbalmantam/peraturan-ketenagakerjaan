@@ -14,12 +14,25 @@ TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 if gemini_key:
     genai.configure(api_key=gemini_key)
 
+# --- FUNGSI MENCARI MODEL OTOMATIS (Mencegah Error 404 Selamanya) ---
+@st.cache_resource
+def get_latest_model():
+    try:
+        # Menanyakan ke API, model apa saja yang tersedia saat ini
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods and 'flash' in m.name:
+                return m.name
+        return "gemini-1.5-flash" # Fallback jika daftar kosong
+    except:
+        return "gemini-1.5-flash"
+
 # Fungsi Membaca PDF
 @st.cache_resource
 def get_pdf_text(path):
     if not os.path.exists(path): return None
     reader = PdfReader(path)
-    return "\n".join([page.extract_text() for page in reader.pages])
+    # Membatasi pembacaan halaman agar RAM tidak jebol
+    return "\n".join([page.extract_text() for page in reader.pages[:20]]) 
 
 pdf_text = get_pdf_text(TARGET_PDF)
 
@@ -37,16 +50,17 @@ if user_query:
             st.error("File PDF tidak ditemukan.")
         else:
             try:
-                # Diperbarui menggunakan gemini-2.0-flash yang aktif dan stabil
-                model = genai.GenerativeModel('gemini-2.0-flash')
+                # Menggunakan model yang ditemukan secara dinamis
+                model_name = get_latest_model()
+                model = genai.GenerativeModel(model_name)
                 
-                # Mengirim prompt yang ringkas
-                prompt = f"Berdasarkan dokumen ini, jawablah: {user_query}. Jika tidak ada, katakan tidak tahu. Dokumen: {pdf_text[:15000]}"
+                # Prompt yang ringkas
+                prompt = f"Berdasarkan dokumen ini, jawablah: {user_query}. Jika tidak ada, katakan tidak tahu. Dokumen: {pdf_text[:10000]}"
                 
                 response = model.generate_content(prompt)
                 st.markdown(response.text)
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error pada model {model_name}: {e}. Silakan refresh.")
 
 # Admin
 with st.expander("🔐 Mode Admin"):
