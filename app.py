@@ -102,7 +102,7 @@ with tab1:
         )
         splits = text_splitter.split_documents(docs)
         
-        # Simpan splits ke session_state untuk pencarian kata kunci langsung
+        # Simpan seluruh pecahan teks untuk pencarian kata kunci langsung
         st.session_state.raw_splits = splits
         
         embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -119,21 +119,21 @@ with tab1:
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.0,
-        max_tokens=800,
+        max_tokens=1024,
     )
     
     retriever = st.session_state.vector_store.as_retriever(
-        search_kwargs={"k": 4}
+        search_kwargs={"k": 6}
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
-                "Anda adalah asisten HR perusahaan yang profesional dan akurat."
-                " Jawablah pertanyaan karyawan HANYA berdasarkan konteks dokumen kebijakan perusahaan"
-                " yang diberikan. Jika informasi tidak ada di dalam konteks, katakan dengan persis:"
-                " 'Maaf, informasi tersebut tidak ditemukan dalam dokumen.' Dilarang berhalusinasi."
+                "Anda adalah asisten HR perusahaan yang profesional, cerdas, dan akurat."
+                " Jawablah pertanyaan karyawan berdasarkan konteks dokumen kebijakan perusahaan"
+                " yang diberikan dengan selengkap dan sejelas mungkin. Jelaskan poin-poin yang"
+                " tercantum dalam dokumen terkait topik yang ditanyakan."
             ),
         ),
         ("human", "Konteks Dokumen:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -148,26 +148,36 @@ with tab1:
         st.markdown(user_query)
 
       with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban akurat dari 52 halaman dokumen..."):
+        with st.spinner("Mencari jawaban komprehensif dari 52 halaman dokumen..."):
           try:
             ql = user_query.lower()
             
-            # --- HYBRID SEARCH: Pencarian Kata Kunci Langsung untuk Topik Krusial ---
-            if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran"]):
-                # Cari langsung chunk yang mengandung kata kunci PHK/Pesangon di seluruh dokumen
-                keyword_matches = [
+            # --- TRUE HYBRID SEARCH: Gabungan Vektor + Pencarian Kata Kunci Harfiah ---
+            vector_docs = retriever.invoke(user_query)
+            
+            # Jika menanyakan PHK/Pemutusan Kerja, ambil juga chunk yang mengandung kata kunci krusial secara langsung
+            keyword_docs = []
+            if any(kw in ql for kw in ["phk", "pemutusan", "pesangon", "pengakhiran", "kerja"]):
+                keyword_docs = [
                     doc for doc in st.session_state.raw_splits 
-                    if any(k in doc.page_content.lower() for k in ["pemutusan", "phk", "pesangon", "pengakhiran", "penghargaan masa kerja"])
+                    if any(k in doc.page_content.lower() for k in ["pemutusan", "phk", "pesangon", "pengakhiran", "penghargaan masa kerja", "pisal"])
                 ]
-                source_docs = keyword_matches[:5] if keyword_matches else retriever.invoke(user_query)
             elif "cuti" in ql:
-                keyword_matches = [
+                keyword_docs = [
                     doc for doc in st.session_state.raw_splits 
                     if "cuti" in doc.page_content.lower()
                 ]
-                source_docs = keyword_matches[:5] if keyword_matches else retriever.invoke(user_query)
-            else:
-                source_docs = retriever.invoke(user_query)
+
+            # Gabungkan hasil pencarian tanpa duplikasi, ambil maksimal 8 dokumen relevan
+            seen = set()
+            source_docs = []
+            for d in keyword_docs + vector_docs:
+                identifier = (d.metadata.get("page"), d.page_content[:50])
+                if identifier not in seen:
+                    seen.add(identifier)
+                    source_docs.append(d)
+            
+            source_docs = source_docs[:8]
 
             context_text = "\n\n".join([doc.page_content for doc in source_docs])
 
