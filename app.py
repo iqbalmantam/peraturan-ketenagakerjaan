@@ -116,7 +116,7 @@ with tab1:
     llm = ChatGroq(
         groq_api_key=groq_api_key,
         model_name=selected_model,
-        temperature=0.1,
+        temperature=0.0,
         max_tokens=1000,
     )
 
@@ -126,6 +126,7 @@ with tab1:
             (
                 "Anda adalah HR Assistant profesional untuk PT CJ Logistics Service Indonesia. "
                 "Jawablah pertanyaan karyawan HANYA berdasarkan teks konteks dokumen resmi perusahaan yang diberikan. "
+                "DILARANG KERAS melakukan pengulangan teks, kalimat, atau looping. Sampaikan setiap poin dengan unik dan sekali saja. "
                 "Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi dan profesional."
             ),
         ),
@@ -189,7 +190,16 @@ with tab1:
             else:
               retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
               source_docs = retriever.invoke(user_query)
-              context_text = "\n\n".join([d.page_content for d in source_docs])
+              
+              # --- DEDUPLIKASI KONTEN (Mencegah Looping Teks) ---
+              seen_texts = set()
+              unique_docs = []
+              for d in source_docs:
+                  if d.page_content not in seen_texts:
+                      seen_texts.add(d.page_content)
+                      unique_docs.append(d)
+              
+              context_text = "\n\n".join([d.page_content for d in unique_docs])
 
               messages = chat_prompt.format_messages(
                   context=context_text, question=user_query
