@@ -93,21 +93,20 @@ with tab1:
 
   # Muat otomatis dokumen dari GitHub jika vector_store masih kosong
   if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and groq_api_key:
-    with st.spinner("Memproses seluruh dokumen peraturan perusahaan dengan model multilingual..."):
+    with st.spinner("Memproses seluruh dokumen peraturan perusahaan..."):
       try:
         loader = PyPDFLoader(TARGET_PDF)
         docs = loader.load()
         
-        # Chunking optimal untuk bahasa Indonesia (konteks kalimat tidak terpotong)
+        # Chunking dioptimalkan agar lebih ringkas (mencegah error kepanjangan token)
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1200, 
-            chunk_overlap=200,
+            chunk_size=800, 
+            chunk_overlap=150,
             add_start_index=True
         )
         splits = text_splitter.split_documents(docs)
         st.session_state.raw_splits = splits
         
-        # Menggunakan Embedding Multilingual agar akurat mendeteksi sinonim & bahasa Indonesia
         embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
         )
@@ -124,20 +123,17 @@ with tab1:
         groq_api_key=groq_api_key,
         model_name=selected_model,
         temperature=0.0,
-        max_tokens=512, # Disesuaikan agar tidak melebihi batasan model
+        max_tokens=512,
     )
 
     chat_prompt = ChatPromptTemplate.from_messages([
         (
             "system",
             (
-                "Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang sangat teliti, profesional, dan jujur. "
+                "Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang teliti dan profesional. "
                 "Jawablah pertanyaan karyawan HANYA berdasarkan konteks dokumen resmi perusahaan yang diberikan. "
-                "\n\nATURAN MUTLAK:"
-                "1. DILARANG KERAS mengarang, menebak-nebak, atau membuat informasi yang tidak tertulis secara nyata di dalam teks konteks."
-                "2. Jika informasi tidak ditemukan di dalam teks, katakan dengan jujur bahwa informasi tersebut tidak tersedia di dalam dokumen."
-                "3. Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi dan profesional."
-                "4. Jika ada rujukan pasal, bab, atau ketentuan angka (hari, persentase, nominal), pastikan akurat sesuai teks."
+                "Jika informasi tidak ditemukan di dalam teks, katakan dengan jujur bahwa informasi tersebut tidak tersedia. "
+                "Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi."
             ),
         ),
         ("human", "Konteks Dokumen Resmi:\n{context}\n\nPertanyaan Karyawan: {question}"),
@@ -154,12 +150,12 @@ with tab1:
       with st.chat_message("assistant"):
         with st.spinner("Mencari jawaban akurat di dokumen..."):
           try:
-            # Menggunakan MMR Retriever untuk hasil pencarian yang kaya, luas, dan minim duplikasi
+            # Retriever disesuaikan ukurannya agar jumlah token aman
             retriever = st.session_state.vector_store.as_retriever(
                 search_type="mmr",
                 search_kwargs={
-                    "k": 6,          # Ambil 6 potongan dokumen terbaik
-                    "fetch_k": 20    # Evaluasi 20 kandidat teratas dulu untuk akurasi maksimal
+                    "k": 4,          # Dikurangi dari 6 ke 4 agar teks konteks tidak berlebihan
+                    "fetch_k": 12    # Dikurangi dari 20 ke 12
                 }
             )
             source_docs = retriever.invoke(user_query)
@@ -224,7 +220,7 @@ with tab3:
       elif not uploaded_file:
         st.error("❌ Mohon pilih file PDF terlebih dahulu.")
       else:
-        with st.spinner("Sedang memproses dokumen baru dengan model multilingual..."):
+        with st.spinner("Sedang memproses dokumen baru..."):
           try:
             with open(TARGET_PDF, "wb") as f:
               f.write(uploaded_file.getbuffer())
@@ -233,8 +229,8 @@ with tab3:
             docs = loader.load()
             
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1200, 
-                chunk_overlap=200,
+                chunk_size=800, 
+                chunk_overlap=150,
                 add_start_index=True
             )
             splits = text_splitter.split_documents(docs)
