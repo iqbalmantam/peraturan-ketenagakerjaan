@@ -57,12 +57,11 @@ if user_query:
                 st.error("⚠️ Dokumen belum terindeks.")
             else:
                 try:
-                    # Menggunakan ChatOpenAI yang diarahkan ke base_url Cerebras
-                    # Model yang umum dan stabil di Cerebras: llama3.1-8b atau llama3.1-70b
+                    # Menggunakan llama3.1-70b yang merupakan standar aktif di Cerebras
                     llm = ChatOpenAI(
                         openai_api_key=cerebras_api_key,
                         openai_api_base="https://api.cerebras.ai/v1",
-                        model_name="llama3.1-8b", 
+                        model_name="llama3.1-70b", 
                         temperature=0.0,
                         max_tokens=500
                     )
