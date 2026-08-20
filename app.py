@@ -39,24 +39,45 @@ tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Baca Peraturan Perusahaan"])
 with tab1:
     st.markdown("### Kolom Pertanyaan")
     
-    # Form input chat berada di atas
+    # --- FITUR 1: TOMBOL PERTANYAAN CEPAT (QUICK CHIPS) ---
+    st.markdown("💡 **Pertanyaan Cepat Populer:**")
+    q_col1, q_col2, q_col3 = st.columns(3)
+    
+    quick_query = None
+    with q_col1:
+        if st.button("📅 Jatah Cuti Tahunan"):
+            quick_query = "Berapa jatah cuti tahunan dan bagaimana ketentuannya?"
+    with q_col2:
+        if st.button("🏥 Klaim Pengobatan"):
+            quick_query = "Bagaimana aturan dan prosedur klaim pengobatan atau kesehatan?"
+    with q_col3:
+        if st.button("📝 Ketentuan PHK"):
+            quick_query = "Apa saja ketentuan dan prosedur Pemutusan Hubungan Kerja (PHK)?"
+
+    st.markdown("---")
+
+    # Form input manual
     with st.form(key="query_form", clear_on_submit=True):
-        user_query = st.text_input("Tanyakan aturan cuti, PHK, klaim, dll:")
+        user_query = st.text_input("Atau ketik pertanyaan Anda sendiri di sini:")
         submit_btn = st.form_submit_button("Kirim Pertanyaan")
 
-    if submit_btn and user_query:
-        st.session_state.messages.append({"role": "user", "content": user_query})
-        with st.spinner("Gemini sedang membaca dan menganalisis dokumen..."):
+    # Pilih query dari tombol cepat atau ketikan manual
+    target_query = quick_query if quick_query else (user_query if submit_btn else None)
+
+    if target_query:
+        st.session_state.messages.append({"role": "user", "content": target_query})
+        with st.spinner("Gemini sedang membaca dokumen dan mencari referensi pasal..."):
             try:
                 if not pdf_text:
                     answer = "File PDF kosong atau gagal dibaca oleh sistem."
                 else:
-                    # Menggunakan model gemini-3.6-flash
                     model = genai.GenerativeModel('gemini-3.6-flash')
                     
+                    # --- FITUR 1: PROMPT DIPERKUAT DENGAN REFERENSI PASAL ---
                     prompt = f"""
-                    Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional dan teliti.
+                    Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional, ramah, dan teliti.
                     Jawablah pertanyaan karyawan HANYA berdasarkan dokumen Peraturan Perusahaan di bawah ini.
+                    **PENTING:** Wajib sebutkan nomor pasal, bab, atau bagian dokumen secara spesifik yang menjadi rujukan jawaban Anda (contoh: Pasal X ayat Y).
                     Jika informasi tidak ditemukan di dalam teks, katakan dengan jujur bahwa informasi tersebut tidak tersedia.
                     Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
 
@@ -64,7 +85,7 @@ with tab1:
                     {pdf_text}
                     ------------------------------------
 
-                    Pertanyaan Karyawan: {user_query}
+                    Pertanyaan Karyawan: {target_query}
                     """
                     
                     response = model.generate_content(prompt)
@@ -73,6 +94,7 @@ with tab1:
                 answer = f"Terjadi kesalahan: {e}"
             
             st.session_state.messages.append({"role": "assistant", "content": answer})
+            st.rerun()
 
     # Tampilkan Riwayat Percakapan
     st.markdown("---")
