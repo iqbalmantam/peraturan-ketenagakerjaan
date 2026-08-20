@@ -3,6 +3,7 @@ import streamlit as st
 import google.generativeai as genai
 from pypdf import PdfReader
 from pathlib import Path
+from PIL import Image
 
 # Konfigurasi Halaman
 st.set_page_config(page_title="HR Policy Assistant", layout="wide")
@@ -19,7 +20,7 @@ st.markdown("""
 # Ambil API Key Gemini dari Streamlit Secrets
 gemini_key = st.secrets.get("GEMINI_API_KEY") or (st.secrets.get("general") or {}).get("GEMINI_API_KEY")
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
-LOGO_FILE = "logo_cj.png"  # Nama file logo Anda
+LOGO_FILE = "logo_cj.png"
 file_path = Path(__file__).parent / TARGET_PDF
 logo_path = Path(__file__).parent / LOGO_FILE
 
@@ -38,17 +39,31 @@ def get_pdf_text(path):
 
 pdf_text = get_pdf_text(file_path)
 
-# --- HEADER DENGAN LOGO & JUDUL BERDAMPINGAN ---
-col_logo, col_title = st.columns([1, 8])
+# --- HEADER DENGAN LOGO TRANSPARAN & JUDUL SEJAJAR ---
+col_logo, col_title = st.columns([1.1, 8.9])
 
 with col_logo:
     if logo_path.exists():
-        st.image(str(logo_path), width=90) # Menampilkan logo
+        try:
+            # Memproses gambar agar background putih otomatis menjadi transparan
+            img = Image.open(logo_path).convert("RGBA")
+            datas = img.getdata()
+            new_data = []
+            for item in datas:
+                # Jika piksel berwarna putih/mendekati putih, ubah jadi transparan (alpha = 0)
+                if item[0] > 200 and item[1] > 200 and item[2] > 200:
+                    new_data.append((255, 255, 255, 0))
+                else:
+                    new_data.append(item)
+            img.putdata(new_data)
+            st.image(img, width=110)
+        except Exception:
+            st.image(str(logo_path), width=110)
     else:
-        st.warning("⚠️ Logo belum diunggah")
+        st.warning("⚠️ Logo belum ada")
 
 with col_title:
-    st.title("🏢 HR Policy Assistant")
+    st.markdown("## 🏢 HR Policy Assistant")
     st.markdown("Asisten cerdas untuk informasi Peraturan Perusahaan PT CJ Logistics Service Indonesia.")
 
 st.markdown("---")
