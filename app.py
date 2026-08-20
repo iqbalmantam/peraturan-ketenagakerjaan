@@ -4,17 +4,17 @@ import google.generativeai as genai
 from pypdf import PdfReader
 
 # Konfigurasi Halaman
-st.set_page_config(page_title="HR Assistant (Free)", layout="wide")
+st.set_page_config(page_title="HR Assistant", layout="wide")
 st.markdown("<style>[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
 
-# Ambil API Key Gemini dari Secrets
+# Ambil API Key Gemini dari Streamlit Secrets
 gemini_key = st.secrets.get("GEMINI_API_KEY") or (st.secrets.get("general") or {}).get("GEMINI_API_KEY")
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
 if gemini_key:
     genai.configure(api_key=gemini_key)
 
-# Fungsi Membaca PDF (Hemat RAM)
+# Fungsi Membaca PDF (Membaca seluruh halaman)
 @st.cache_resource
 def get_pdf_text(path):
     if not os.path.exists(path): return None
@@ -23,8 +23,8 @@ def get_pdf_text(path):
 
 pdf_text = get_pdf_text(TARGET_PDF)
 
-st.title("🏢 HR Policy Assistant (Free Version)")
-st.markdown("Asisten cerdas gratis menggunakan Google Gemini.")
+st.title("🏢 HR Policy Assistant")
+st.markdown("Asisten HR berbasis Gemini - Membaca seluruh dokumen perusahaan.")
 
 # Chat
 user_query = st.chat_input("Tanyakan aturan cuti, PHK, klaim, dll...")
@@ -32,16 +32,17 @@ user_query = st.chat_input("Tanyakan aturan cuti, PHK, klaim, dll...")
 if user_query:
     st.chat_message("user").markdown(user_query)
     with st.chat_message("assistant"):
-        with st.spinner("Menganalisis dokumen..."):
+        with st.spinner("Menganalisis seluruh isi dokumen..."):
             if not gemini_key:
                 st.error("⚠️ `GEMINI_API_KEY` belum diset di Streamlit Secrets.")
             elif not pdf_text:
-                st.error(f"⚠️ File PDF `{TARGET_PDF}` tidak ditemukan.")
+                st.error(f"⚠️ File `{TARGET_PDF}` tidak ditemukan. Pastikan file ada di folder utama.")
             else:
                 try:
-                    # Menggunakan gemini-3.6-flash sesuai standar terbaru Google
-                    model = genai.GenerativeModel('gemini-3.6-flash')
+                    # Menggunakan model yang sudah terbukti jalan di akun Anda
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     
+                    # Prompt dengan FULL pdf_text (Tanpa batasan 15000)
                     prompt = f"""
                     Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional dan teliti.
                     Jawablah pertanyaan karyawan HANYA berdasarkan dokumen Peraturan Perusahaan di bawah ini.
@@ -49,7 +50,7 @@ if user_query:
                     Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
 
                     --- DOKUMEN PERATURAN PERUSAHAAN ---
-                    {pdf_text[:15000]}
+                    {pdf_text}
                     ------------------------------------
 
                     Pertanyaan Karyawan: {user_query}
