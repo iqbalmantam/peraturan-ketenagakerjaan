@@ -7,6 +7,15 @@ from pathlib import Path
 # Konfigurasi Halaman
 st.set_page_config(page_title="HR Policy Assistant", layout="wide")
 
+# CSS untuk menyembunyikan header/ikon bawaan Streamlit (GitHub, Share, Menu, dll)
+st.markdown("""
+    <style>
+    [data-testid="stHeader"] {
+        display: none;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # Ambil API Key Gemini dari Streamlit Secrets
 gemini_key = st.secrets.get("GEMINI_API_KEY") or (st.secrets.get("general") or {}).get("GEMINI_API_KEY")
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
@@ -130,3 +139,7 @@ with st.expander("🔐 Mode Admin"):
                 f.write(uploaded.getbuffer())
             st.cache_resource.clear()
             st.success("File berhasil diunggah! Silakan refresh halaman.")
+
+# Watermark kembali dipasang di bagian bawah
+st.markdown("---")
+st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
