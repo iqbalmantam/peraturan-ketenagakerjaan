@@ -24,7 +24,7 @@ def load_pdf_text(path):
 pdf_content = load_pdf_text(TARGET_PDF)
 
 st.title("🏢 HR Policy Assistant (Cerebras Powered)")
-st.markdown("Asisten cerdas berkecepatan tinggi dengan infrastruktur resmi Cerebras.")
+st.markdown("Asisten cerdas berkecepatan tinggi dengan deteksi model otomatis.")
 
 # --- CHAT KARYAWAN ---
 user_query = st.chat_input("Tanyakan aturan cuti, PHK, klaim, dll...")
@@ -39,9 +39,18 @@ if user_query:
                 st.error(f"⚠️ File PDF `{TARGET_PDF}` tidak ditemukan di repositori.")
             else:
                 try:
-                    # Menggunakan SDK resmi Cerebras (Tanpa perantara LangChain)
                     client = Cerebras(api_key=cerebras_api_key)
                     
+                    # Otomatis deteksi model yang aktif di akun Anda saat ini
+                    models_response = client.models.list()
+                    active_model = None
+                    for m in models_response:
+                        active_model = m.id
+                        break
+                    
+                    if not active_model:
+                        active_model = "llama3.1-8b" # Fallback pengaman
+
                     prompt = f"""
                     Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional dan teliti.
                     Jawablah pertanyaan karyawan HANYA berdasarkan dokumen Peraturan Perusahaan di bawah ini.
@@ -55,7 +64,7 @@ if user_query:
                     """
 
                     response = client.chat.completions.create(
-                        model="llama3.1-8b",  # Model standar resmi Cerebras
+                        model=active_model,  # Menggunakan model yang terdeteksi otomatis
                         messages=[{"role": "user", "content": prompt}],
                         max_tokens=500,
                         temperature=0.0
@@ -74,7 +83,7 @@ with st.expander("🔐 Mode Admin"):
         if uploaded:
             with open(TARGET_PDF, "wb") as f:
                 f.write(uploaded.getbuffer())
-            st.success("File berhasil diunggah! Silakan Refresh halaman.")
+            st.success("File berhasil diunggah! Silakan Refresh.")
 
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
