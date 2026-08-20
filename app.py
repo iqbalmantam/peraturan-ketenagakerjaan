@@ -26,31 +26,6 @@ pdf_text = get_pdf_text(TARGET_PDF)
 st.title("🏢 HR Policy Assistant")
 st.markdown("Asisten HR berbasis Gemini - Membaca seluruh dokumen perusahaan.")
 
-# --- FUNGSI AUTO-DETECT MODEL DARI SERVER GOOGLE ---
-def generate_gemini_dynamic(prompt_text):
-    try:
-        # Mengambil daftar model yang aktif dan mendukung generateContent di akun Anda
-        available_models = [
-            m.name for m in genai.list_models() 
-            if 'generateContent' in m.supported_generation_methods
-        ]
-        
-        if not available_models:
-            raise Exception("Tidak ada model Gemini yang tersedia untuk akun ini.")
-        
-        # Menggunakan model pertama yang aktif dari server Google
-        selected_model = available_models[0]
-        model = genai.GenerativeModel(selected_model)
-        response = model.generate_content(prompt_text)
-        
-        if response and response.text:
-            return response.text
-        else:
-            raise Exception("Respons dari model kosong.")
-            
-    except Exception as e:
-        raise Exception(f"Gagal terhubung ke Gemini: {e}")
-
 # Chat
 user_query = st.chat_input("Tanyakan aturan cuti, PHK, klaim, dll...")
 
@@ -64,6 +39,9 @@ if user_query:
                 st.error(f"⚠️ File `{TARGET_PDF}` tidak ditemukan. Pastikan file ada di folder utama.")
             else:
                 try:
+                    # Menggunakan gemini-3.6-flash sesuai permintaan sistem Google
+                    model = genai.GenerativeModel('gemini-3.6-flash')
+                    
                     prompt = f"""
                     Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional dan teliti.
                     Jawablah pertanyaan karyawan HANYA berdasarkan dokumen Peraturan Perusahaan di bawah ini.
@@ -77,8 +55,8 @@ if user_query:
                     Pertanyaan Karyawan: {user_query}
                     """
                     
-                    answer = generate_gemini_dynamic(prompt)
-                    st.markdown(answer)
+                    response = model.generate_content(prompt)
+                    st.markdown(response.text)
                 except Exception as e:
                     st.error(f"Terjadi kesalahan: {e}")
 
