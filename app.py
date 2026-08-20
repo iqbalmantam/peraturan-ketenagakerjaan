@@ -57,11 +57,11 @@ if user_query:
                 st.error("⚠️ Dokumen belum terindeks.")
             else:
                 try:
-                    # Menggunakan model alternatif gratis DeepSeek R1 di OpenRouter
+                    # Menggunakan model Mistral gratis di OpenRouter
                     llm = ChatOpenAI(
                         openai_api_key=openrouter_api_key,
                         openai_api_base="https://openrouter.ai/api/v1",
-                        model_name="deepseek/deepseek-r1-distill-llama-70b:free", 
+                        model_name="mistralai/mistral-7b-instruct:free", 
                         temperature=0.0,
                         max_tokens=500
                     )
