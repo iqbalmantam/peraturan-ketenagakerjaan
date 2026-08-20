@@ -80,7 +80,7 @@ with tab1:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Proses Chat Streaming
+    # Proses Chat dengan Indikator Loading & Streaming
     if target_query:
         st.session_state.messages.append({"role": "user", "content": target_query})
         with st.chat_message("user"):
@@ -88,11 +88,14 @@ with tab1:
             
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
+            
+            # --- INFO / INDIKATOR LOADING ---
+            message_placeholder.markdown("⏳ *Sedang menganalisis dokumen dan menyusun jawaban...*")
             full_response = ""
             
             try:
                 if not pdf_text:
-                    st.error("File PDF kosong atau gagal dibaca.")
+                    message_placeholder.error("File PDF kosong atau gagal dibaca.")
                 else:
                     model = genai.GenerativeModel('gemini-3.6-flash')
                     prompt = f"""
@@ -114,12 +117,14 @@ with tab1:
                     for chunk in response:
                         if chunk.text:
                             full_response += chunk.text
+                            # Update placeholder dengan teks yang sedang diketik
                             message_placeholder.markdown(full_response + "▌")
                     
+                    # Tampilkan hasil akhir tanpa kursor kedip
                     message_placeholder.markdown(full_response)
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
             except Exception as e:
-                st.error(f"Terjadi kesalahan: {e}")
+                message_placeholder.error(f"Terjadi kesalahan: {e}")
 
 with tab2:
     st.subheader("📖 Dokumen Peraturan Perusahaan")
@@ -140,6 +145,6 @@ with st.expander("🔐 Mode Admin"):
             st.cache_resource.clear()
             st.success("File berhasil diunggah! Silakan refresh halaman.")
 
-# Watermark kembali dipasang di bagian bawah
+# Watermark bagian bawah
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
