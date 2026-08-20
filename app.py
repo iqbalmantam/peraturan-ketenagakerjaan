@@ -13,7 +13,6 @@ admin_pass_secret = st.secrets.get("ADMIN_PASSWORD") or (st.secrets.get("general
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
-# Fungsi Membaca PDF secara efisien (Hemat RAM)
 @st.cache_resource
 def load_pdf_text(path):
     if not os.path.exists(path):
@@ -23,67 +22,48 @@ def load_pdf_text(path):
 
 pdf_content = load_pdf_text(TARGET_PDF)
 
-st.title("🏢 HR Policy Assistant (Cerebras Powered)")
-st.markdown("Asisten cerdas berkecepatan tinggi dengan deteksi model otomatis.")
+st.title("🏢 HR Policy Assistant")
 
-# --- CHAT KARYAWAN ---
-user_query = st.chat_input("Tanyakan aturan cuti, PHK, klaim, dll...")
+user_query = st.chat_input("Tanyakan aturan perusahaan...")
 
 if user_query:
     st.chat_message("user").markdown(user_query)
     with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban kilat..."):
+        with st.spinner("Mencari jawaban..."):
             if not cerebras_api_key:
-                st.error("⚠️ `CEREBRAS_API_KEY` belum diset di Streamlit Secrets.")
+                st.error("API Key belum diset.")
             elif not pdf_content:
-                st.error(f"⚠️ File PDF `{TARGET_PDF}` tidak ditemukan di repositori.")
+                st.error("File PDF tidak ditemukan.")
             else:
                 try:
+                    # Langsung panggil model yang pasti ada
                     client = Cerebras(api_key=cerebras_api_key)
                     
-                    # Otomatis deteksi model yang aktif di akun Anda saat ini
-                    models_response = client.models.list()
-                    active_model = None
-                    for m in models_response:
-                        active_model = m.id
-                        break
-                    
-                    if not active_model:
-                        active_model = "llama3.1-8b" # Fallback pengaman
-
                     prompt = f"""
-                    Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional dan teliti.
-                    Jawablah pertanyaan karyawan HANYA berdasarkan dokumen Peraturan Perusahaan di bawah ini.
-                    Jika tidak ada di teks, katakan informasi tidak tersedia.
-                    Sajikan dalam bentuk poin-poin rapi.
+                    Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional.
+                    Jawablah pertanyaan karyawan HANYA berdasarkan dokumen di bawah.
+                    Jika tidak ada, katakan 'Informasi tidak ditemukan'.
 
-                    Dokumen Perusahaan:
-                    {pdf_content[:15000]}
-
-                    Pertanyaan Karyawan: {user_query}
+                    Dokumen: {pdf_content[:15000]}
+                    Pertanyaan: {user_query}
                     """
 
+                    # Menggunakan llama3.1-8b secara eksplisit
                     response = client.chat.completions.create(
-                        model=active_model,  # Menggunakan model yang terdeteksi otomatis
+                        model="llama3.1-8b", 
                         messages=[{"role": "user", "content": prompt}],
                         max_tokens=500,
                         temperature=0.0
                     )
                     
                     st.markdown(response.choices[0].message.content)
-                    
                 except Exception as e:
-                    st.error(f"Terjadi kesalahan pada Cerebras: {e}")
+                    st.error(f"Error: {e}")
 
-# --- MODE ADMIN ---
+# Admin
 with st.expander("🔐 Mode Admin"):
-    pwd = st.text_input("Password Admin:", type="password")
-    if pwd == admin_pass_secret:
-        uploaded = st.file_uploader("Upload PDF Peraturan Baru", type=["pdf"])
+    if st.text_input("Password:", type="password") == "2273":
+        uploaded = st.file_uploader("Upload PDF baru", type=["pdf"])
         if uploaded:
-            with open(TARGET_PDF, "wb") as f:
-                f.write(uploaded.getbuffer())
-            st.success("File berhasil diunggah! Silakan Refresh.")
-
-st.markdown("---")
-st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
+            with open(TARGET_PDF, "wb") as f: f.write(uploaded.getbuffer())
+            st.success("Berhasil! Refresh halaman.")
