@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 import google.generativeai as genai
+from pypdf import PdfReader
 
 # Konfigurasi Halaman
 st.set_page_config(page_title="HR Policy Assistant", layout="wide")
@@ -13,24 +14,24 @@ file_path = os.path.join(os.path.dirname(__file__), TARGET_PDF)
 if gemini_key:
     genai.configure(api_key=gemini_key)
 
+# Fungsi Membaca PDF secara lokal (Stabil & Cepat)
+@st.cache_resource
+def get_pdf_text(path):
+    if not os.path.exists(path): return ""
+    try:
+        reader = PdfReader(path)
+        return "\n".join([page.extract_text() for page in reader.pages])
+    except Exception:
+        return ""
+
+pdf_text = get_pdf_text(file_path)
+
 st.title("🏢 HR Policy Assistant")
 st.markdown("Asisten cerdas untuk informasi Peraturan Perusahaan PT CJ Logistics Service Indonesia.")
 
 # Inisialisasi Riwayat Percakapan
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-# --- UPLOAD FILE KE GEMINI API DI BALIK LAYAR ---
-@st.cache_resource
-def get_gemini_file(path):
-    if not os.path.exists(path):
-        return None
-    try:
-        return genai.upload_file(path)
-    except Exception:
-        return None
-
-gemini_file = get_gemini_file(file_path)
 
 # --- MENU UTAMA (MENGGUNAKAN TABS) ---
 tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Baca Peraturan Perusahaan"])
@@ -47,22 +48,26 @@ with tab1:
         st.session_state.messages.append({"role": "user", "content": user_query})
         with st.spinner("Gemini sedang membaca dan menganalisis dokumen..."):
             try:
-                if not gemini_file:
-                    answer = "File PDF tidak ditemukan atau gagal diunggah ke server Gemini."
+                if not pdf_text:
+                    answer = "File PDF kosong atau gagal dibaca oleh sistem."
                 else:
                     # Menggunakan model gemini-3.6-flash
                     model = genai.GenerativeModel('gemini-3.6-flash')
                     
                     prompt = f"""
                     Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional dan teliti.
-                    Jawablah pertanyaan karyawan HANYA berdasarkan dokumen Peraturan Perusahaan yang dilampirkan.
+                    Jawablah pertanyaan karyawan HANYA berdasarkan dokumen Peraturan Perusahaan di bawah ini.
                     Jika informasi tidak ditemukan di dalam teks, katakan dengan jujur bahwa informasi tersebut tidak tersedia.
                     Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
-                    
+
+                    --- DOKUMEN PERATURAN PERUSAHAAN ---
+                    {pdf_text}
+                    ------------------------------------
+
                     Pertanyaan Karyawan: {user_query}
                     """
                     
-                    response = model.generate_content([gemini_file, prompt])
+                    response = model.generate_content(prompt)
                     answer = response.text
             except Exception as e:
                 answer = f"Terjadi kesalahan: {e}"
