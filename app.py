@@ -14,7 +14,7 @@ TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 if gemini_key:
     genai.configure(api_key=gemini_key)
 
-# Fungsi Membaca PDF (Membaca seluruh halaman)
+# Fungsi Membaca PDF (Membaca seluruh halaman dengan cache)
 @st.cache_resource
 def get_pdf_text(path):
     if not os.path.exists(path): return None
@@ -39,10 +39,10 @@ if user_query:
                 st.error(f"⚠️ File `{TARGET_PDF}` tidak ditemukan. Pastikan file ada di folder utama.")
             else:
                 try:
-                    # Menggunakan model yang sudah terbukti jalan di akun Anda
+                    # Menggunakan model gemini-1.5-flash yang stabil
                     model = genai.GenerativeModel('gemini-1.5-flash')
                     
-                    # Prompt dengan FULL pdf_text (Tanpa batasan 15000)
+                    # Prompt dengan FULL pdf_text (Membaca keseluruhan dokumen)
                     prompt = f"""
                     Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional dan teliti.
                     Jawablah pertanyaan karyawan HANYA berdasarkan dokumen Peraturan Perusahaan di bawah ini.
@@ -63,11 +63,14 @@ if user_query:
 
 # Admin
 with st.expander("🔐 Mode Admin"):
-    if st.text_input("Password:", type="password") == "2273":
+    if st.text_input("Password:", type="password", key="admin_pwd") == "2273":
         uploaded = st.file_uploader("Upload PDF baru", type=["pdf"])
         if uploaded:
-            with open(TARGET_PDF, "wb") as f: f.write(uploaded.getbuffer())
-            st.success("Berhasil! Refresh halaman.")
+            with open(TARGET_PDF, "wb") as f: 
+                f.write(uploaded.getbuffer())
+            # Membersihkan cache agar PDF baru langsung dimuat
+            st.cache_resource.clear()
+            st.success("File berhasil diunggah dan cache dibersihkan! Silakan refresh halaman.")
 
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
