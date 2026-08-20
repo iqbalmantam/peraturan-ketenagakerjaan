@@ -44,7 +44,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # --- MENU UTAMA ---
-tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Baca Peraturan Perusahaan"])
+tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Download Peraturan Perusahaan"])
 
 with tab1:
     st.markdown("### Kolom Pertanyaan")
