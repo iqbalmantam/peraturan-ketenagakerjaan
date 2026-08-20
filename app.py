@@ -57,12 +57,12 @@ if user_query:
                 st.error("⚠️ Dokumen belum terindeks.")
             else:
                 try:
-                    # Menggunakan ChatOpenAI yang diarahkan ke base_url OpenRouter
-                    # Kita pakai model Llama 3 8B gratis/andal di OpenRouter
+                    # Menggunakan model alternatif gratis yang stabil di OpenRouter
+                    # Anda bisa mengubah model_name ke "meta-llama/llama-3.1-8b-instruct:free" atau "deepseek/deepseek-r1-distill-llama-70b:free"
                     llm = ChatOpenAI(
                         openai_api_key=openrouter_api_key,
                         openai_api_base="https://openrouter.ai/api/v1",
-                        model_name="meta-llama/llama-3-8b-instruct:free", 
+                        model_name="meta-llama/llama-3.1-8b-instruct:free", 
                         temperature=0.0,
                         max_tokens=500
                     )
