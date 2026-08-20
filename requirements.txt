@@ -1,10 +1,3 @@
 streamlit
-langchain
-langchain-community
-langchain-openai
-langchain-huggingface
-langchain-text-splitters
-chromadb
-pysqlite3-binary
-sentence-transformers
+cerebras-cloud-sdk
 pypdf
