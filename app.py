@@ -57,12 +57,11 @@ if user_query:
                 st.error("⚠️ Dokumen belum terindeks.")
             else:
                 try:
-                    # Menggunakan model alternatif gratis yang stabil di OpenRouter
-                    # Anda bisa mengubah model_name ke "meta-llama/llama-3.1-8b-instruct:free" atau "deepseek/deepseek-r1-distill-llama-70b:free"
+                    # Menggunakan model alternatif gratis DeepSeek R1 di OpenRouter
                     llm = ChatOpenAI(
                         openai_api_key=openrouter_api_key,
                         openai_api_base="https://openrouter.ai/api/v1",
-                        model_name="meta-llama/llama-3.1-8b-instruct:free", 
+                        model_name="deepseek/deepseek-r1-distill-llama-70b:free", 
                         temperature=0.0,
                         max_tokens=500
                     )
