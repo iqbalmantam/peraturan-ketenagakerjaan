@@ -126,9 +126,7 @@ with st.expander("🔐 Mode Admin"):
     if st.text_input("Password:", type="password", key="admin_pwd") == "2273":
         uploaded = st.file_uploader("Upload PDF baru", type=["pdf"])
         if uploaded:
-            with open(file_path, "wb") as f: f.write(uploaded.getbuffer())
+            with open(file_path, "wb") as f: 
+                f.write(uploaded.getbuffer())
             st.cache_resource.clear()
             st.success("File berhasil diunggah! Silakan refresh halaman.")
-
-st.markdown("---")
-st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
