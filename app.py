@@ -19,7 +19,9 @@ st.markdown("""
 # Ambil API Key Gemini dari Streamlit Secrets
 gemini_key = st.secrets.get("GEMINI_API_KEY") or (st.secrets.get("general") or {}).get("GEMINI_API_KEY")
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
+LOGO_FILE = "logo_cj.png"  # Nama file logo Anda
 file_path = Path(__file__).parent / TARGET_PDF
+logo_path = Path(__file__).parent / LOGO_FILE
 
 if gemini_key:
     genai.configure(api_key=gemini_key)
@@ -36,8 +38,20 @@ def get_pdf_text(path):
 
 pdf_text = get_pdf_text(file_path)
 
-st.title("🏢 HR Policy Assistant")
-st.markdown("Asisten cerdas untuk informasi Peraturan Perusahaan PT CJ Logistics Service Indonesia.")
+# --- HEADER DENGAN LOGO & JUDUL BERDAMPINGAN ---
+col_logo, col_title = st.columns([1, 8])
+
+with col_logo:
+    if logo_path.exists():
+        st.image(str(logo_path), width=90) # Menampilkan logo
+    else:
+        st.warning("⚠️ Logo belum diunggah")
+
+with col_title:
+    st.title("🏢 HR Policy Assistant")
+    st.markdown("Asisten cerdas untuk informasi Peraturan Perusahaan PT CJ Logistics Service Indonesia.")
+
+st.markdown("---")
 
 # Inisialisasi Riwayat Percakapan
 if "messages" not in st.session_state:
@@ -88,8 +102,6 @@ with tab1:
             
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
-            
-            # --- INFO / INDIKATOR LOADING ---
             message_placeholder.markdown("⏳ *Sedang menganalisis dokumen dan menyusun jawaban...*")
             full_response = ""
             
@@ -112,15 +124,12 @@ with tab1:
                     Pertanyaan Karyawan: {target_query}
                     """
                     
-                    # Streaming Response
                     response = model.generate_content(prompt, stream=True)
                     for chunk in response:
                         if chunk.text:
                             full_response += chunk.text
-                            # Update placeholder dengan teks yang sedang diketik
                             message_placeholder.markdown(full_response + "▌")
                     
-                    # Tampilkan hasil akhir tanpa kursor kedip
                     message_placeholder.markdown(full_response)
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
             except Exception as e:
@@ -143,7 +152,14 @@ with st.expander("🔐 Mode Admin"):
             with open(file_path, "wb") as f: 
                 f.write(uploaded.getbuffer())
             st.cache_resource.clear()
-            st.success("File berhasil diunggah! Silakan refresh halaman.")
+            st.success("File PDF berhasil diunggah!")
+
+        uploaded_logo = st.file_uploader("Upload Logo Baru (logo_cj.png)", type=["png", "jpg"])
+        if uploaded_logo:
+            with open(logo_path, "wb") as f:
+                f.write(uploaded_logo.getbuffer())
+            st.cache_resource.clear()
+            st.success("Logo berhasil diperbarui!")
 
 # Watermark bagian bawah
 st.markdown("---")
