@@ -1,19 +1,7 @@
 import os
-
-try:
-    import pysqlite3
-    import sys
-    sys.modules["sqlite3"] = pysqlite3
-except ImportError:
-    pass
-
 import streamlit as st
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from cerebras.cloud.sdk import Cerebras
+from pypdf import PdfReader
 
 # Konfigurasi Halaman
 st.set_page_config(page_title="HR Assistant (Cerebras)", layout="wide")
@@ -25,24 +13,18 @@ admin_pass_secret = st.secrets.get("ADMIN_PASSWORD") or (st.secrets.get("general
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 
-if "vector_store" not in st.session_state:
-    st.session_state.vector_store = None
+# Fungsi Membaca PDF secara efisien (Hemat RAM)
+@st.cache_resource
+def load_pdf_text(path):
+    if not os.path.exists(path):
+        return ""
+    reader = PdfReader(path)
+    return "\n".join([page.extract_text() for page in reader.pages])
+
+pdf_content = load_pdf_text(TARGET_PDF)
 
 st.title("🏢 HR Policy Assistant (Cerebras Powered)")
-st.markdown("Asisten cerdas berkecepatan tinggi dengan infrastruktur Cerebras.")
-
-# --- INDEXING DOKUMEN ---
-if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and cerebras_api_key:
-    with st.spinner("Mempersiapkan dokumen perusahaan..."):
-        try:
-            loader = PyPDFLoader(TARGET_PDF)
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=50)
-            splits = text_splitter.split_documents(loader.load())
-            
-            embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-            st.session_state.vector_store = Chroma.from_documents(documents=splits, embedding=embeddings)
-        except Exception as e:
-            st.error(f"Gagal memproses dokumen: {e}")
+st.markdown("Asisten cerdas berkecepatan tinggi dengan infrastruktur resmi Cerebras.")
 
 # --- CHAT KARYAWAN ---
 user_query = st.chat_input("Tanyakan aturan cuti, PHK, klaim, dll...")
@@ -53,34 +35,33 @@ if user_query:
         with st.spinner("Mencari jawaban kilat..."):
             if not cerebras_api_key:
                 st.error("⚠️ `CEREBRAS_API_KEY` belum diset di Streamlit Secrets.")
-            elif not st.session_state.vector_store:
-                st.error("⚠️ Dokumen belum terindeks.")
+            elif not pdf_content:
+                st.error(f"⚠️ File PDF `{TARGET_PDF}` tidak ditemukan di repositori.")
             else:
                 try:
-                    # Menggunakan llama3.1-70b yang merupakan standar aktif di Cerebras
-                    llm = ChatOpenAI(
-                        openai_api_key=cerebras_api_key,
-                        openai_api_base="https://api.cerebras.ai/v1",
-                        model_name="llama3.1-70b", 
-                        temperature=0.0,
-                        max_tokens=500
+                    # Menggunakan SDK resmi Cerebras (Tanpa perantara LangChain)
+                    client = Cerebras(api_key=cerebras_api_key)
+                    
+                    prompt = f"""
+                    Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional dan teliti.
+                    Jawablah pertanyaan karyawan HANYA berdasarkan dokumen Peraturan Perusahaan di bawah ini.
+                    Jika tidak ada di teks, katakan informasi tidak tersedia.
+                    Sajikan dalam bentuk poin-poin rapi.
+
+                    Dokumen Perusahaan:
+                    {pdf_content[:15000]}
+
+                    Pertanyaan Karyawan: {user_query}
+                    """
+
+                    response = client.chat.completions.create(
+                        model="llama3.1-8b",  # Model standar resmi Cerebras
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=500,
+                        temperature=0.0
                     )
                     
-                    # Ambil dokumen relevan
-                    retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 2})
-                    docs = retriever.invoke(user_query)
-                    context = " ".join([d.page_content.replace("\n", " ") for d in docs])
-                    
-                    prompt = ChatPromptTemplate.from_template(
-                        "Jawab pertanyaan berikut HANYA berdasarkan konteks dokumen di bawah.\n"
-                        "Jika tidak ada di teks, katakan 'Informasi tidak ditemukan di dokumen.'\n\n"
-                        "Konteks: {context}\n\n"
-                        "Pertanyaan: {question}"
-                    )
-                    
-                    chain = prompt | llm
-                    response = chain.invoke({"context": context, "question": user_query})
-                    st.markdown(response.content)
+                    st.markdown(response.choices[0].message.content)
                     
                 except Exception as e:
                     st.error(f"Terjadi kesalahan pada Cerebras: {e}")
