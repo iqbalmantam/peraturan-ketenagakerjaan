@@ -14,7 +14,7 @@ TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 if gemini_key:
     genai.configure(api_key=gemini_key)
 
-# Fungsi Membaca PDF (Membaca seluruh halaman dengan cache)
+# Fungsi Membaca PDF (Membaca seluruh halaman)
 @st.cache_resource
 def get_pdf_text(path):
     if not os.path.exists(path): return None
@@ -25,6 +25,24 @@ pdf_text = get_pdf_text(TARGET_PDF)
 
 st.title("🏢 HR Policy Assistant")
 st.markdown("Asisten HR berbasis Gemini - Membaca seluruh dokumen perusahaan.")
+
+# --- FUNGSI AUTO-FALLBACK MODEL (Mencegah Error 404 Selamanya) ---
+def generate_gemini_safe(prompt_text):
+    # Daftar model yang dicoba otomatis secara berurutan
+    models_to_try = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro']
+    last_error = None
+    
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt_text)
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            last_error = e
+            continue
+            
+    raise Exception(f"Semua model Gemini gagal diakses. Error: {last_error}")
 
 # Chat
 user_query = st.chat_input("Tanyakan aturan cuti, PHK, klaim, dll...")
@@ -39,9 +57,6 @@ if user_query:
                 st.error(f"⚠️ File `{TARGET_PDF}` tidak ditemukan. Pastikan file ada di folder utama.")
             else:
                 try:
-                    # Menggunakan model gemini-1.5-flash yang stabil
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    
                     # Prompt dengan FULL pdf_text (Membaca keseluruhan dokumen)
                     prompt = f"""
                     Anda adalah Asisten HR PT CJ Logistics Service Indonesia yang profesional dan teliti.
@@ -56,8 +71,8 @@ if user_query:
                     Pertanyaan Karyawan: {user_query}
                     """
                     
-                    response = model.generate_content(prompt)
-                    st.markdown(response.text)
+                    answer = generate_gemini_safe(prompt)
+                    st.markdown(answer)
                 except Exception as e:
                     st.error(f"Terjadi kesalahan: {e}")
 
@@ -66,9 +81,7 @@ with st.expander("🔐 Mode Admin"):
     if st.text_input("Password:", type="password", key="admin_pwd") == "2273":
         uploaded = st.file_uploader("Upload PDF baru", type=["pdf"])
         if uploaded:
-            with open(TARGET_PDF, "wb") as f: 
-                f.write(uploaded.getbuffer())
-            # Membersihkan cache agar PDF baru langsung dimuat
+            with open(TARGET_PDF, "wb") as f: f.write(uploaded.getbuffer())
             st.cache_resource.clear()
             st.success("File berhasil diunggah dan cache dibersihkan! Silakan refresh halaman.")
 
