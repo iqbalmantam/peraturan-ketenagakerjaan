@@ -16,11 +16,11 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 # Konfigurasi Halaman
-st.set_page_config(page_title="HR Assistant (OpenRouter)", layout="wide")
+st.set_page_config(page_title="HR Assistant (Cerebras)", layout="wide")
 st.markdown("<style>[data-testid='stSidebar'] {display: none;}</style>", unsafe_allow_html=True)
 
-# Ambil API Key OpenRouter
-openrouter_api_key = st.secrets.get("OPENROUTER_API_KEY") or (st.secrets.get("general") or {}).get("OPENROUTER_API_KEY")
+# Ambil API Key Cerebras dari Secrets
+cerebras_api_key = st.secrets.get("CEREBRAS_API_KEY") or (st.secrets.get("general") or {}).get("CEREBRAS_API_KEY")
 admin_pass_secret = st.secrets.get("ADMIN_PASSWORD") or (st.secrets.get("general") or {}).get("ADMIN_PASSWORD") or "2273"
 
 TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
@@ -28,11 +28,11 @@ TARGET_PDF = "CJ LOGISTICS SERVICE INDONESIA_PP.pdf"
 if "vector_store" not in st.session_state:
     st.session_state.vector_store = None
 
-st.title("🏢 HR Policy Assistant (OpenRouter)")
-st.markdown("Asisten cerdas dengan fleksibilitas pilihan model AI terbaik.")
+st.title("🏢 HR Policy Assistant (Cerebras Powered)")
+st.markdown("Asisten cerdas berkecepatan tinggi dengan infrastruktur Cerebras.")
 
 # --- INDEXING DOKUMEN ---
-if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and openrouter_api_key:
+if st.session_state.vector_store is None and os.path.exists(TARGET_PDF) and cerebras_api_key:
     with st.spinner("Mempersiapkan dokumen perusahaan..."):
         try:
             loader = PyPDFLoader(TARGET_PDF)
@@ -50,18 +50,19 @@ user_query = st.chat_input("Tanyakan aturan cuti, PHK, klaim, dll...")
 if user_query:
     st.chat_message("user").markdown(user_query)
     with st.chat_message("assistant"):
-        with st.spinner("Mencari jawaban akurat..."):
-            if not openrouter_api_key:
-                st.error("⚠️ `OPENROUTER_API_KEY` belum diset di Streamlit Secrets.")
+        with st.spinner("Mencari jawaban kilat..."):
+            if not cerebras_api_key:
+                st.error("⚠️ `CEREBRAS_API_KEY` belum diset di Streamlit Secrets.")
             elif not st.session_state.vector_store:
                 st.error("⚠️ Dokumen belum terindeks.")
             else:
                 try:
-                    # Menggunakan model Mistral gratis di OpenRouter
+                    # Menggunakan ChatOpenAI yang diarahkan ke base_url Cerebras
+                    # Model yang umum dan stabil di Cerebras: llama3.1-8b atau llama3.1-70b
                     llm = ChatOpenAI(
-                        openai_api_key=openrouter_api_key,
-                        openai_api_base="https://openrouter.ai/api/v1",
-                        model_name="mistralai/mistral-7b-instruct:free", 
+                        openai_api_key=cerebras_api_key,
+                        openai_api_base="https://api.cerebras.ai/v1",
+                        model_name="llama3.1-8b", 
                         temperature=0.0,
                         max_tokens=500
                     )
@@ -83,7 +84,7 @@ if user_query:
                     st.markdown(response.content)
                     
                 except Exception as e:
-                    st.error(f"Terjadi kesalahan pada OpenRouter: {e}")
+                    st.error(f"Terjadi kesalahan pada Cerebras: {e}")
 
 # --- MODE ADMIN ---
 with st.expander("🔐 Mode Admin"):
