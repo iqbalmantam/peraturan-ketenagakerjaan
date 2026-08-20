@@ -1,4 +1,5 @@
 import os
+import base64
 import streamlit as st
 import google.generativeai as genai
 
@@ -20,22 +21,20 @@ st.markdown("Asisten cerdas untuk informasi Peraturan Perusahaan PT CJ Logistics
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- UPLOAD FILE LANGSUNG KE GEMINI API ---
+# --- UPLOAD FILE KE GEMINI API DI BALIK LAYAR ---
 @st.cache_resource
 def get_gemini_file(path):
     if not os.path.exists(path):
         return None
     try:
-        # Mengunggah file PDF langsung ke server Gemini (mendukung PDF teks maupun scan)
-        uploaded_file = genai.upload_file(path)
-        return uploaded_file
-    except Exception as e:
+        return genai.upload_file(path)
+    except Exception:
         return None
 
 gemini_file = get_gemini_file(file_path)
 
 # --- MENU UTAMA (MENGGUNAKAN TABS) ---
-tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Info Dokumen"])
+tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Baca Peraturan Perusahaan"])
 
 with tab1:
     st.markdown("### Kolom Pertanyaan")
@@ -64,7 +63,6 @@ with tab1:
                     Pertanyaan Karyawan: {user_query}
                     """
                     
-                    # Kirim file PDF langsung bersama prompt ke Gemini
                     response = model.generate_content([gemini_file, prompt])
                     answer = response.text
             except Exception as e:
@@ -86,17 +84,19 @@ with tab1:
             st.markdown("---")
 
 with tab2:
-    st.subheader("📖 Informasi Dokumen Perusahaan")
-    st.markdown(f"File PDF Aktif di Repositori: **{TARGET_PDF}**")
-    st.markdown(
-        "Dokumen ini terhubung langsung ke sistem pemrosesan cerdas Gemini. "
-        "Gemini membaca langsung file PDF tersebut secara utuh (baik format teks digital maupun hasil *scan*), "
-        "sehingga tidak ada informasi yang terlewat."
-    )
+    st.subheader("📖 Dokumen Peraturan Perusahaan")
+    st.markdown("Anda dapat membaca langsung isi dokumen PDF perusahaan melalui tampilan di bawah ini:")
+    
     if os.path.exists(file_path):
-        st.success("✅ Status: File PDF terdeteksi dan aktif.")
+        # Membaca file PDF dan mengubahnya ke base64 untuk ditampilkan di browser
+        with open(file_path, "rb") as f:
+            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+        
+        # Menampilkan PDF menggunakan tag iframe HTML
+        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>'
+        st.markdown(pdf_display, unsafe_allow_html=True)
     else:
-        st.error("❌ Status: File PDF tidak ditemukan di direktori utama.")
+        st.error(f"File PDF `{TARGET_PDF}` tidak ditemukan di direktori utama.")
 
 # --- MODE ADMIN ---
 with st.expander("🔐 Mode Admin"):
