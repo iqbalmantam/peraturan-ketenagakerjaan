@@ -1,5 +1,4 @@
 import os
-import base64
 import streamlit as st
 import google.generativeai as genai
 
@@ -85,16 +84,18 @@ with tab1:
 
 with tab2:
     st.subheader("📖 Dokumen Peraturan Perusahaan")
-    st.markdown("Anda dapat membaca langsung isi dokumen PDF perusahaan melalui tampilan di bawah ini:")
+    st.markdown("Anda dapat mengunduh dan membaca dokumen lengkap Peraturan Perusahaan melalui tombol di bawah ini:")
     
     if os.path.exists(file_path):
-        # Membaca file PDF dan mengubahnya ke base64 untuk ditampilkan di browser
-        with open(file_path, "rb") as f:
-            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-        
-        # Menampilkan PDF menggunakan tag iframe HTML
-        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800px" type="application/pdf"></iframe>'
-        st.markdown(pdf_display, unsafe_allow_html=True)
+        with open(file_path, "rb") as pdf_file:
+            pdf_bytes = pdf_file.read()
+            
+        st.download_button(
+            label="📥 Download / Baca Dokumen Peraturan Perusahaan (PDF)",
+            data=pdf_bytes,
+            file_name=TARGET_PDF,
+            mime="application/pdf"
+        )
     else:
         st.error(f"File PDF `{TARGET_PDF}` tidak ditemukan di direktori utama.")
 
