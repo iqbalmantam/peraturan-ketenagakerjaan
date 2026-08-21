@@ -25,7 +25,7 @@ def get_groq_client():
 
 def generate_ai_response(client, api_messages):
     completion = client.chat.completions.create(
-        model="llama3-70b-8192",  # Menggunakan model standar Groq yang stabil
+        model="openai/gpt-oss-120b",  # Menggunakan model aktif terbaru dari Groq
         messages=api_messages,
         temperature=0.2,
         max_tokens=1024,
