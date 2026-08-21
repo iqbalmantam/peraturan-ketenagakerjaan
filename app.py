@@ -16,7 +16,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNGSI GROQ DARI APLIKASI SEBELUMNYA ---
+# --- FUNGSI GROQ ---
 def get_groq_client():
     groq_key = st.secrets.get("GROQ_API_KEY", "")
     if not groq_key:
@@ -25,7 +25,7 @@ def get_groq_client():
 
 def generate_ai_response(client, api_messages):
     completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="llama3-70b-8192",  # Menggunakan model standar Groq yang stabil
         messages=api_messages,
         temperature=0.2,
         max_tokens=1024,
