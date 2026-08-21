@@ -7,7 +7,7 @@ from pathlib import Path
 # Konfigurasi Halaman
 st.set_page_config(page_title="UU No. 6 Tahun 2023 Assistant", layout="wide")
 
-# CSS untuk menyembunyikan header/ikon bawaan Streamlit (GitHub, Share, Menu, dll)
+# CSS untuk menyembunyikan header/ikon bawaan Streamlit
 st.markdown("""
     <style>
     [data-testid="stHeader"] {
@@ -19,7 +19,7 @@ st.markdown("""
 # Ambil API Key Gemini dari Streamlit Secrets
 gemini_key = st.secrets.get("GEMINI_API_KEY") or (st.secrets.get("general") or {}).get("GEMINI_API_KEY")
 
-# --- PENYESUAIAN NAMA FILE PDF BARU ---
+# --- PENYESUAIAN NAMA FILE PDF (PASTIKAN SAMA DENGAN DI GITHUB) ---
 TARGET_PDF = "Undang-undang Nomor 6 Tahun 2023.pdf"
 file_path = Path(__file__).parent / TARGET_PDF
 
@@ -32,7 +32,7 @@ def get_pdf_text(path):
     if not path.exists(): return ""
     try:
         reader = PdfReader(path)
-        return "\n".join([page.extract_text() for page in reader.pages])
+        return "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
     except Exception:
         return ""
 
@@ -51,7 +51,6 @@ tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Download Undang-Undang"])
 with tab1:
     st.markdown("### Kolom Pertanyaan")
     
-    # Grid Tombol Cepat yang disesuaikan dengan UU Cipta Kerja
     st.markdown("💡 **Pilih topik pertanyaan populer:**")
     quick_questions = [
         {"label": "📝 Ketentuan PHK", "prompt": "Bagaimana ketentuan dan perhitungan pesangon/penghargaan masa kerja akibat PHK berdasarkan UU No. 6 Tahun 2023?"},
@@ -70,19 +69,16 @@ with tab1:
 
     st.markdown("---")
     
-    # Form input manual
     with st.form(key="query_form", clear_on_submit=True):
         user_query = st.text_input("Atau ketik pertanyaan Anda sendiri di sini:")
         submit_btn = st.form_submit_button("Kirim Pertanyaan")
 
     target_query = clicked_query if clicked_query else (user_query if submit_btn else None)
 
-    # Menampilkan riwayat chat lama
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Proses Chat dengan Indikator Loading & Streaming
     if target_query:
         st.session_state.messages.append({"role": "user", "content": target_query})
         with st.chat_message("user"):
@@ -90,15 +86,14 @@ with tab1:
             
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
-            
-            # --- INFO / INDIKATOR LOADING ---
             message_placeholder.markdown("⏳ *Sedang menganalisis dokumen Undang-Undang...*")
             full_response = ""
             
             try:
                 if not pdf_text:
-                    message_placeholder.error(f"File `{TARGET_PDF}` kosong atau gagal dibaca. Pastikan nama file di GitHub sudah sama persis.")
+                    message_placeholder.error(f"File `{TARGET_PDF}` tidak ditemukan atau gagal dibaca. Pastikan nama file di GitHub adalah '{TARGET_PDF}'.")
                 else:
+                    # Model tetap sesuai permintaan
                     model = genai.GenerativeModel('gemini-3.6-flash')
                     prompt = f"""
                     Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti.
@@ -108,21 +103,18 @@ with tab1:
                     Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
 
                     --- DOKUMEN UNDANG-UNDANG NO. 6 TAHUN 2023 ---
-                    {pdf_text}
+                    {pdf_text[:30000]} # Dibatasi agar tidak melewati limit token
                     ----------------------------------------------
 
                     Pertanyaan Pengguna: {target_query}
                     """
                     
-                    # Streaming Response
                     response = model.generate_content(prompt, stream=True)
                     for chunk in response:
                         if chunk.text:
                             full_response += chunk.text
-                            # Update placeholder dengan teks yang sedang diketik
                             message_placeholder.markdown(full_response + "▌")
                     
-                    # Tampilkan hasil akhir tanpa kursor kedip
                     message_placeholder.markdown(full_response)
                     st.session_state.messages.append({"role": "assistant", "content": full_response})
             except Exception as e:
@@ -130,12 +122,11 @@ with tab1:
 
 with tab2:
     st.subheader("📖 Dokumen Undang-Undang")
-    st.markdown("Anda dapat mengunduh dokumen lengkap Undang-Undang Nomor 6 Tahun 2023 melalui tombol di bawah ini:")
     if file_path.exists():
         with open(file_path, "rb") as f:
             st.download_button("📥 Download UU No. 6 Tahun 2023 (PDF)", f, file_name=TARGET_PDF, mime="application/pdf")
     else:
-        st.error(f"File PDF `{TARGET_PDF}` tidak ditemukan di direktori utama repositori.")
+        st.error(f"File `{TARGET_PDF}` tidak ditemukan di direktori.")
 
 # Admin
 with st.expander("🔐 Mode Admin"):
@@ -147,6 +138,5 @@ with st.expander("🔐 Mode Admin"):
             st.cache_resource.clear()
             st.success("File berhasil diunggah! Silakan refresh halaman.")
 
-# Watermark bagian bawah
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
