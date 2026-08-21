@@ -39,7 +39,7 @@ def get_pdf_text(path):
     except Exception:
         return ""
 
-# Membaca kedua teks dokumen
+# Membaca teks dokumen
 text_uu_6 = get_pdf_text(path_uu_6)
 text_uu_13 = get_pdf_text(path_uu_13)
 
@@ -59,12 +59,12 @@ with tab1:
     st.markdown("💡 **Pilih topik pertanyaan populer berdasarkan dokumen ketenagakerjaan:**")
     
     quick_questions = [
-        {"label": "📝 Ketentuan PHK & Pesangon", "prompt": "Bagaimana aturan pemutusan hubungan kerja (PHK) serta perhitungan uang pesangon dan penghargaan masa kerja berdasarkan dokumen undang-undang ketenagakerjaan?"},
-        {"label": "📅 Waktu Istirahat & Cuti", "prompt": "Bagaimana ketentuan waktu istirahat, istirahat mingguan, dan cuti tahunan minimal 12 hari menurut dokumen undang-undang?"},
-        {"label": "📜 Kontrak PKWT & Kompensasi", "prompt": "Bagaimana ketentuan Perjanjian Kerja Waktu Tertentu (PKWT) serta aturan masa berlakunya dalam dokumen undang-undang?"},
-        {"label": "👥 Alih Daya (Outsourcing)", "prompt": "Bagaimana aturan mengenai perusahaan alih daya (outsourcing) dan batasan pekerjaannya berdasarkan dokumen undang-undang?"},
-        {"label": "⏰ Jam Kerja & Lembur", "prompt": "Bagaimana ketentuan waktu kerja (5 atau 6 hari kerja) serta syarat upah kerja lembur menurut dokumen undang-undang?"},
-        {"label": "💰 Kebijakan Upah Minimum", "prompt": "Bagaimana prinsip dan kebijakan penetapan upah minimum yang melindungi pekerja berdasarkan dokumen undang-undang?"}
+        {"label": "🏫 Pelatihan Kerja", "prompt": "Bagaimana ketentuan penyelenggaraan pelatihan kerja berdasarkan dokumen undang-undang ketenagakerjaan?"},
+        {"label": "🌍 Tenaga Kerja Asing (TKA)", "prompt": "Bagaimana ketentuan penggunaan tenaga kerja asing (TKA) berdasarkan dokumen undang-undang?"},
+        {"label": "📜 Perjanjian Kerja (PKWT)", "prompt": "Bagaimana ketentuan perjanjian kerja waktu tertentu (PKWT) berdasarkan dokumen undang-undang?"},
+        {"label": "👥 Alih Daya (Outsourcing)", "prompt": "Bagaimana ketentuan penyerahan sebagian pekerjaan atau alih daya berdasarkan dokumen undang-undang?"},
+        {"label": "🔍 Ringkasan Dokumen", "prompt": "Apa saja pokok-pokok materi yang dimuat dalam teks dokumen undang-undang yang tersedia saat ini?"},
+        {"label": "📋 Ketentuan Umum", "prompt": "Apa saja definisi penting mengenai ketenagakerjaan yang diatur dalam Bab I dokumen undang-undang?"}
     ]
     
     cols = st.columns(3)
@@ -101,20 +101,19 @@ with tab1:
                 else:
                     model = genai.GenerativeModel('gemini-3.6-flash')
                     
-                    # Menggabungkan referensi kedua dokumen agar AI dapat membaca keduanya
                     combined_docs = f"""
                     === DOKUMEN 1: UU NO. 13 TAHUN 2003 TENTANG KETENAGAKERJAAN ===
-                    {text_uu_13[:25000]}
+                    {text_uu_13[:40000]}
                     
                     === DOKUMEN 2: UU NO. 6 TAHUN 2023 TENTANG CIPTA KERJA ===
-                    {text_uu_6[:25000]}
+                    {text_uu_6[:40000]}
                     """
                     
                     prompt = f"""
-                    Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti.
-                    Jawablah pertanyaan berdasarkan dokumen Undang-Undang di bawah ini (UU No. 13 Tahun 2003 dan/atau UU No. 6 Tahun 2023).
-                    Wajib sebutkan nomor pasal, ayat, atau bagian undang-undang secara spesifik (contoh: Pasal X UU No. ...).
-                    Jika informasi tidak ditemukan di kedua dokumen, katakan dengan jujur bahwa informasi tersebut tidak tersedia.
+                    Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional.
+                    Jawablah pertanyaan berdasarkan teks dokumen Undang-Undang yang tersedia di bawah ini.
+                    Wajib sebutkan nomor pasal atau bagian undang-undang secara spesifik jika ada di dalam teks.
+                    Jika informasi tidak ditemukan di dalam teks dokumen yang terlampir, jelaskan bagian apa saja dari undang-undang yang saat ini terbaca.
                     Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
 
                     {combined_docs}
