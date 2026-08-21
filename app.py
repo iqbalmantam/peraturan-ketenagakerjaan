@@ -51,14 +51,16 @@ tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Download Undang-Undang"])
 with tab1:
     st.markdown("### Kolom Pertanyaan")
     
-    st.markdown("💡 **Pilih topik pertanyaan populer:**")
+    st.markdown("💡 **Pilih topik pertanyaan populer berdasarkan isi UU No. 6 Tahun 2023:**")
+    
+    # Topik pertanyaan disesuaikan secara spesifik merujuk ke pasal-pasal utama dalam dokumen
     quick_questions = [
-        {"label": "📝 Ketentuan PHK", "prompt": "Bagaimana ketentuan dan perhitungan pesangon/penghargaan masa kerja akibat PHK berdasarkan UU No. 6 Tahun 2023?"},
-        {"label": "📅 Cuti & Istirahat", "prompt": "Bagaimana aturan cuti tahunan dan hak istirahat panjang menurut UU No. 6 Tahun 2023?"},
-        {"label": "📜 Kontrak PKWT", "prompt": "Bagaimana ketentuan Perjanjian Kerja Waktu Tertentu (PKWT) dalam UU No. 6 Tahun 2023?"},
-        {"label": "👥 Alih Daya (Outsourcing)", "prompt": "Bagaimana aturan mengenai perusahaan alih daya (outsourcing) di UU No. 6 Tahun 2023?"},
-        {"label": "⏰ Jam Kerja & Lembur", "prompt": "Bagaimana ketentuan waktu kerja dan upah kerja lembur?"},
-        {"label": "💰 Upah Minimum", "prompt": "Bagaimana mekanisme penetapan upah minimum dalam UU No. 6 Tahun 2023?"}
+        {"label": "📝 Pasal PHK & Pesangon", "prompt": "Bagaimana ketentuan pemutusan hubungan kerja (PHK) serta perhitungan uang pesangon, penghargaan masa kerja, dan uang penggantian hak berdasarkan Pasal 151-156 UU No. 6 Tahun 2023?"},
+        {"label": "📅 Waktu Istirahat & Cuti", "prompt": "Bagaimana aturan waktu istirahat, istirahat mingguan, dan cuti tahunan (minimal 12 hari) menurut Pasal 79 UU No. 6 Tahun 2023?"},
+        {"label": "📜 Kontrak PKWT & Kompensasi", "prompt": "Bagaimana ketentuan Perjanjian Kerja Waktu Tertentu (PKWT) serta aturan uang kompensasinya berdasarkan Pasal 56-59 UU No. 6 Tahun 2023?"},
+        {"label": "👥 Alih Daya (Outsourcing)", "prompt": "Bagaimana aturan dan perlindungan hukum bagi pekerja perusahaan alih daya (outsourcing) berdasarkan Pasal 64 & 66 UU No. 6 Tahun 2023?"},
+        {"label": "⏰ Jam Kerja & Lembur", "prompt": "Bagaimana ketentuan waktu kerja (7 atau 8 jam sehari) serta syarat dan batas maksimal upah kerja lembur menurut Pasal 77-78 UU No. 6 Tahun 2023?"},
+        {"label": "💰 Penetapan Upah Minimum", "prompt": "Bagaimana formula dan mekanisme penetapan upah minimum oleh gubernur berdasarkan Pasal 88C-88E UU No. 6 Tahun 2023?"}
     ]
     
     cols = st.columns(3)
@@ -93,7 +95,7 @@ with tab1:
                 if not pdf_text:
                     message_placeholder.error(f"File `{TARGET_PDF}` tidak ditemukan atau gagal dibaca. Pastikan nama file di GitHub adalah '{TARGET_PDF}'.")
                 else:
-                    # Model tetap sesuai permintaan
+                    # Model tetap menggunakan 'gemini-3.6-flash' sesuai permintaan sebelumnya
                     model = genai.GenerativeModel('gemini-3.6-flash')
                     prompt = f"""
                     Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti.
@@ -103,7 +105,7 @@ with tab1:
                     Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
 
                     --- DOKUMEN UNDANG-UNDANG NO. 6 TAHUN 2023 ---
-                    {pdf_text[:30000]} # Dibatasi agar tidak melewati limit token
+                    {pdf_text[:30000]}
                     ----------------------------------------------
 
                     Pertanyaan Pengguna: {target_query}
