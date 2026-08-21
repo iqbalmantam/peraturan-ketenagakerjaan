@@ -5,7 +5,7 @@ from pypdf import PdfReader
 from pathlib import Path
 
 # Konfigurasi Halaman
-st.set_page_config(page_title="UU No. 6 Tahun 2023 Assistant", layout="wide")
+st.set_page_config(page_title="Asisten Ketenagakerjaan (UU No. 6/2023 & UU No. 13/2003)", layout="wide")
 
 # CSS untuk menyembunyikan header/ikon bawaan Streamlit
 st.markdown("""
@@ -19,9 +19,12 @@ st.markdown("""
 # Ambil API Key Gemini dari Streamlit Secrets
 gemini_key = st.secrets.get("GEMINI_API_KEY") or (st.secrets.get("general") or {}).get("GEMINI_API_KEY")
 
-# --- PENYESUAIAN NAMA FILE PDF (PASTIKAN SAMA DENGAN DI GITHUB) ---
-TARGET_PDF = "Undang-undang Nomor 6 Tahun 2023.pdf"
-file_path = Path(__file__).parent / TARGET_PDF
+# --- DEFINISI FILE PDF ---
+FILE_UU_6 = "Undang-undang Nomor 6 Tahun 2023.pdf"
+FILE_UU_13 = "UU No 13 Tahun 2003.pdf"
+
+path_uu_6 = Path(__file__).parent / FILE_UU_6
+path_uu_13 = Path(__file__).parent / FILE_UU_13
 
 if gemini_key:
     genai.configure(api_key=gemini_key)
@@ -36,30 +39,32 @@ def get_pdf_text(path):
     except Exception:
         return ""
 
-pdf_text = get_pdf_text(file_path)
+# Membaca kedua teks dokumen
+text_uu_6 = get_pdf_text(path_uu_6)
+text_uu_13 = get_pdf_text(path_uu_13)
 
-st.title("⚖️ UU No. 6 Tahun 2023 Assistant")
-st.markdown("Asisten cerdas untuk informasi Undang-Undang Nomor 6 Tahun 2023 (Klaster Ketenagakerjaan / Cipta Kerja).")
+st.title("⚖️ Asisten Hukum Ketenagakerjaan")
+st.markdown("Asisten cerdas untuk informasi **UU No. 6 Tahun 2023** (Cipta Kerja) dan **UU No. 13 Tahun 2003** (Ketenagakerjaan).")
 
 # Inisialisasi Riwayat Percakapan
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # --- MENU UTAMA ---
-tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Download Undang-Undang"])
+tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Download Dokumen Undang-Undang"])
 
 with tab1:
     st.markdown("### Kolom Pertanyaan")
     
-    st.markdown("💡 **Pilih topik pertanyaan populer berdasarkan isi teks dokumen PDF:**")
+    st.markdown("💡 **Pilih topik pertanyaan populer berdasarkan dokumen ketenagakerjaan:**")
     
     quick_questions = [
-        {"label": "🏫 Ringkasan Isi Dokumen", "prompt": "Apa saja pokok-pokok ketentuan yang dibahas dalam dokumen UU No. 6 Tahun 2023 ini?"},
-        {"label": "📜 Ketentuan Pasal 81", "prompt": "Jelaskan mengenai poin-poin perubahan ketentuan yang tercantum dalam Pasal 81 di dokumen ini."},
-        {"label": "🛡️ Program Jaminan Sosial", "prompt": "Bagaimana ketentuan mengenai jaminan sosial atau Jaminan Kehilangan Pekerjaan dalam dokumen ini?"},
-        {"label": "👥 Ketentuan Umum Kerja", "prompt": "Apa saja aturan mengenai ketenagakerjaan yang dimuat dalam dokumen lampiran ini?"},
-        {"label": "🔍 Analisis Dokumen", "prompt": "Tolong ringkas isi keseluruhan dari teks dokumen PDF yang terbaca saat ini."},
-        {"label": "📋 Status Peraturan", "prompt": "Bagaimana kedudukan hukum dari dokumen Undang-Undang Nomor 6 Tahun 2023 ini?"}
+        {"label": "📝 Ketentuan PHK & Pesangon", "prompt": "Bagaimana aturan pemutusan hubungan kerja (PHK) serta perhitungan uang pesangon dan penghargaan masa kerja berdasarkan dokumen undang-undang ketenagakerjaan?"},
+        {"label": "📅 Waktu Istirahat & Cuti", "prompt": "Bagaimana ketentuan waktu istirahat, istirahat mingguan, dan cuti tahunan minimal 12 hari menurut dokumen undang-undang?"},
+        {"label": "📜 Kontrak PKWT & Kompensasi", "prompt": "Bagaimana ketentuan Perjanjian Kerja Waktu Tertentu (PKWT) serta aturan masa berlakunya dalam dokumen undang-undang?"},
+        {"label": "👥 Alih Daya (Outsourcing)", "prompt": "Bagaimana aturan mengenai perusahaan alih daya (outsourcing) dan batasan pekerjaannya berdasarkan dokumen undang-undang?"},
+        {"label": "⏰ Jam Kerja & Lembur", "prompt": "Bagaimana ketentuan waktu kerja (5 atau 6 hari kerja) serta syarat upah kerja lembur menurut dokumen undang-undang?"},
+        {"label": "💰 Kebijakan Upah Minimum", "prompt": "Bagaimana prinsip dan kebijakan penetapan upah minimum yang melindungi pekerja berdasarkan dokumen undang-undang?"}
     ]
     
     cols = st.columns(3)
@@ -91,16 +96,28 @@ with tab1:
             full_response = ""
             
             try:
-                if not pdf_text:
-                    message_placeholder.error(f"File `{TARGET_PDF}` tidak ditemukan atau gagal dibaca. Pastikan nama file di GitHub adalah '{TARGET_PDF}'.")
+                if not text_uu_13 and not text_uu_6:
+                    message_placeholder.error("File PDF dokumen undang-undang tidak ditemukan atau gagal dibaca di direktori.")
                 else:
                     model = genai.GenerativeModel('gemini-3.6-flash')
+                    
+                    # Menggabungkan referensi kedua dokumen agar AI dapat membaca keduanya
+                    combined_docs = f"""
+                    === DOKUMEN 1: UU NO. 13 TAHUN 2003 TENTANG KETENAGAKERJAAN ===
+                    {text_uu_13[:25000]}
+                    
+                    === DOKUMEN 2: UU NO. 6 TAHUN 2023 TENTANG CIPTA KERJA ===
+                    {text_uu_6[:25000]}
+                    """
+                    
                     prompt = f"""
-                    Anda adalah Asisten hukum yang analitis. Berikan penjelasan sebaik mungkin berdasarkan teks dokumen PDF di bawah ini. Jika ada bagian yang terpotong di dalam teks, jelaskan berdasarkan potongan teks yang tersedia saja secara objektif.
+                    Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti.
+                    Jawablah pertanyaan berdasarkan dokumen Undang-Undang di bawah ini (UU No. 13 Tahun 2003 dan/atau UU No. 6 Tahun 2023).
+                    Wajib sebutkan nomor pasal, ayat, atau bagian undang-undang secara spesifik (contoh: Pasal X UU No. ...).
+                    Jika informasi tidak ditemukan di kedua dokumen, katakan dengan jujur bahwa informasi tersebut tidak tersedia.
+                    Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
 
-                    --- DOKUMEN UNDANG-UNDANG NO. 6 TAHUN 2023 ---
-                    {pdf_text[:30000]}
-                    ----------------------------------------------
+                    {combined_docs}
 
                     Pertanyaan Pengguna: {target_query}
                     """
@@ -117,22 +134,36 @@ with tab1:
                 message_placeholder.error(f"Terjadi kesalahan: {e}")
 
 with tab2:
-    st.subheader("📖 Dokumen Undang-Undang")
-    if file_path.exists():
-        with open(file_path, "rb") as f:
-            st.download_button("📥 Download UU No. 6 Tahun 2023 (PDF)", f, file_name=TARGET_PDF, mime="application/pdf")
-    else:
-        st.error(f"File `{TARGET_PDF}` tidak ditemukan di direktori.")
+    st.subheader("📖 Download Dokumen Undang-Undang")
+    st.markdown("Pilih dokumen undang-undang yang ingin Anda unduh:")
+    
+    col_dl1, col_dl2 = st.columns(2)
+    with col_dl1:
+        if path_uu_13.exists():
+            with open(path_uu_13, "rb") as f:
+                st.download_button("📥 Download UU No. 13 Tahun 2003 (PDF)", f, file_name=FILE_UU_13, mime="application/pdf")
+        else:
+            st.warning(f"File `{FILE_UU_13}` tidak ditemukan.")
+            
+    with col_dl2:
+        if path_uu_6.exists():
+            with open(path_uu_6, "rb") as f:
+                st.download_button("📥 Download UU No. 6 Tahun 2023 (PDF)", f, file_name=FILE_UU_6, mime="application/pdf")
+        else:
+            st.warning(f"File `{FILE_UU_6}` tidak ditemukan.")
 
 # Admin
 with st.expander("🔐 Mode Admin"):
-    if st.text_input("Password:", type="password", key="admin_pwd") == "2273":
+    admin_pw = st.text_input("Password:", type="password", key="admin_pwd")
+    if admin_pw == "2273":
+        target_upload = st.selectbox("Pilih file yang ingin diperbarui:", [FILE_UU_13, FILE_UU_6])
         uploaded = st.file_uploader("Upload PDF baru", type=["pdf"])
         if uploaded:
-            with open(file_path, "wb") as f: 
+            target_path = path_uu_13 if target_upload == FILE_UU_13 else path_uu_6
+            with open(target_path, "wb") as f: 
                 f.write(uploaded.getbuffer())
             st.cache_resource.clear()
-            st.success("File berhasil diunggah! Silakan refresh halaman.")
+            st.success(f"File `{target_upload}` berhasil diperbarui! Silakan refresh halaman.")
 
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
