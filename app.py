@@ -1,6 +1,6 @@
 import os
 import streamlit as st
-from groq import Groq
+import google.generativeai as genai
 from pypdf import PdfReader
 from pathlib import Path
 
@@ -16,24 +16,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNGSI GROQ ---
-def get_groq_client():
-    groq_key = st.secrets.get("GROQ_API_KEY", "")
-    if not groq_key:
-        return None
-    return Groq(api_key=groq_key)
+# Ambil API Key Gemini dari Streamlit Secrets
+gemini_key = st.secrets.get("GEMINI_API_KEY") or (st.secrets.get("general") or {}).get("GEMINI_API_KEY")
 
-def generate_ai_response(client, api_messages):
-    completion = client.chat.completions.create(
-        model="openai/gpt-oss-120b",  # Menggunakan model aktif terbaru dari Groq
-        messages=api_messages,
-        temperature=0.2,
-        max_tokens=1024,
-    )
-    return completion.choices[0].message.content
-
-# Inisialisasi Klien Groq
-client = get_groq_client()
+if gemini_key:
+    genai.configure(api_key=gemini_key)
 
 # --- DEFINISI FILE PDF ---
 FILE_UU_6 = "Undang-undang Nomor 6 Tahun 2023.pdf"
@@ -96,27 +83,35 @@ with tab1:
 
     if target_query:
         try:
-            if not client:
-                full_response = "API Key Groq belum diatur di Streamlit Secrets (`GROQ_API_KEY`)."
+            if not gemini_key:
+                full_response = "API Key Gemini belum diatur di Streamlit Secrets (`GEMINI_API_KEY`)."
             elif not text_uu_13 and not text_uu_6:
                 full_response = "File PDF dokumen undang-undang tidak ditemukan atau gagal dibaca di direktori."
             else:
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
                 combined_docs = f"""
                 === DOKUMEN 1: UU NO. 13 TAHUN 2003 TENTANG KETENAGAKERJAAN ===
-                {text_uu_13[:25000]}
+                {text_uu_13[:40000]}
                 
                 === DOKUMEN 2: UU NO. 6 TAHUN 2023 TENTANG CIPTA KERJA ===
-                {text_uu_6[:25000]}
+                {text_uu_6[:40000]}
                 """
                 
-                system_prompt = "Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti. Jawablah pertanyaan berdasarkan teks dokumen Undang-Undang yang tersedia. Wajib sebutkan nomor pasal, ayat, atau bagian undang-undang secara spesifik. Jika informasi tidak ditemukan, katakan dengan jujur. Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi."
+                prompt = f"""
+                Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti.
+                Jawablah pertanyaan berdasarkan teks dokumen Undang-Undang yang tersedia di bawah ini.
+                Wajib sebutkan nomor pasal, ayat, atau bagian undang-undang secara spesifik (contoh: Pasal X UU No. ... jo. Pasal Y UU No. ...).
+                Jika informasi tidak ditemukan di kedua dokumen, katakan dengan jujur bahwa informasi tersebut tidak tersedia.
+                Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
+
+                {combined_docs}
+
+                Pertanyaan Pengguna: {target_query}
+                """
                 
-                api_messages = [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"Dokumen Referensi:\n{combined_docs}\n\nPertanyaan Pengguna: {target_query}"}
-                ]
-                
-                full_response = generate_ai_response(client, api_messages)
+                response = model.generate_content(prompt)
+                full_response = response.text
         except Exception as e:
             full_response = f"Terjadi kesalahan: {e}"
 
