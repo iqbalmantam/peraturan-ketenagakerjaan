@@ -53,14 +53,13 @@ with tab1:
     
     st.markdown("💡 **Pilih topik pertanyaan populer berdasarkan isi teks dokumen PDF:**")
     
-    # Topik pertanyaan disesuaikan berdasarkan teks pasal yang tersedia dalam PDF
     quick_questions = [
-        {"label": "🏫 Pelatihan Kerja", "prompt": "Bagaimana ketentuan penyelenggaraan pelatihan kerja oleh pemerintah, swasta, dan perusahaan berdasarkan Pasal 81 angka 1-2 UU No. 6 Tahun 2023?"},
-        {"label": "🌍 Tenaga Kerja Asing (TKA)", "prompt": "Bagaimana aturan penggunaan Tenaga Kerja Asing (TKA) dan kewajiban pemberi kerja berdasarkan Pasal 81 angka 4-11 UU No. 6 Tahun 2023?"},
-        {"label": "📜 PKWT & Kompensasi", "prompt": "Bagaimana ketentuan Perjanjian Kerja Waktu Tertentu (PKWT) dan kewajiban uang kompensasi berdasarkan Pasal 81 angka 12-17 UU No. 6 Tahun 2023?"},
-        {"label": "👥 Alih Daya (Outsourcing)", "prompt": "Bagaimana ketentuan perusahaan alih daya dan pelindungan pekerjanya berdasarkan Pasal 81 angka 18-20 UU No. 6 Tahun 2023?"},
-        {"label": "⏰ Jam Kerja & Lembur", "prompt": "Bagaimana ketentuan waktu kerja dan waktu kerja lembur berdasarkan Pasal 81 angka 23-24 UU No. 6 Tahun 2023?"},
-        {"label": "🛡️ Jaminan Kehilangan Pekerjaan", "prompt": "Bagaimana ketentuan program Jaminan Kehilangan Pekerjaan (JKP) bagi pekerja yang mengalami pemutusan hubungan kerja berdasarkan Pasal 82 UU No. 6 Tahun 2023?"}
+        {"label": "🏫 Ringkasan Isi Dokumen", "prompt": "Apa saja pokok-pokok ketentuan yang dibahas dalam dokumen UU No. 6 Tahun 2023 ini?"},
+        {"label": "📜 Ketentuan Pasal 81", "prompt": "Jelaskan mengenai poin-poin perubahan ketentuan yang tercantum dalam Pasal 81 di dokumen ini."},
+        {"label": "🛡️ Program Jaminan Sosial", "prompt": "Bagaimana ketentuan mengenai jaminan sosial atau Jaminan Kehilangan Pekerjaan dalam dokumen ini?"},
+        {"label": "👥 Ketentuan Umum Kerja", "prompt": "Apa saja aturan mengenai ketenagakerjaan yang dimuat dalam dokumen lampiran ini?"},
+        {"label": "🔍 Analisis Dokumen", "prompt": "Tolong ringkas isi keseluruhan dari teks dokumen PDF yang terbaca saat ini."},
+        {"label": "📋 Status Peraturan", "prompt": "Bagaimana kedudukan hukum dari dokumen Undang-Undang Nomor 6 Tahun 2023 ini?"}
     ]
     
     cols = st.columns(3)
@@ -97,11 +96,7 @@ with tab1:
                 else:
                     model = genai.GenerativeModel('gemini-3.6-flash')
                     prompt = f"""
-                    Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti.
-                    Jawablah pertanyaan berdasarkan dokumen Undang-Undang Nomor 6 Tahun 2023 di bawah ini.
-                    Wajib sebutkan nomor pasal, ayat, atau bagian undang-undang secara spesifik (contoh: Pasal X ayat Y).
-                    Jika informasi tidak ditemukan, katakan dengan jujur bahwa informasi tersebut tidak tersedia di dalam dokumen.
-                    Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
+                    Anda adalah Asisten hukum yang analitis. Berikan penjelasan sebaik mungkin berdasarkan teks dokumen PDF di bawah ini. Jika ada bagian yang terpotong di dalam teks, jelaskan berdasarkan potongan teks yang tersedia saja secara objektif.
 
                     --- DOKUMEN UNDANG-UNDANG NO. 6 TAHUN 2023 ---
                     {pdf_text[:30000]}
