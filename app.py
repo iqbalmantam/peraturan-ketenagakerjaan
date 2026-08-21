@@ -98,9 +98,9 @@ with tab1:
                 
                 system_prompt = "Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti. Jawablah pertanyaan berdasarkan teks dokumen Undang-Undang yang tersedia. Wajib sebutkan nomor pasal, ayat, atau bagian undang-undang secara spesifik. Jika informasi tidak ditemukan, katakan dengan jujur. Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi."
                 
-                # Menggunakan model llama3-70b-8192 yang stabil dan mendukung konteks panjang di Groq
+                # Menggunakan model llama3-8b-8192 yang stabil dan selalu tersedia di Groq
                 chat_completion = client.chat.completions.create(
-                    model="llama3-70b-8192",
+                    model="llama3-8b-8192",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": f"Dokumen Referensi:\n{combined_docs}\n\nPertanyaan Pengguna: {target_query}"}
