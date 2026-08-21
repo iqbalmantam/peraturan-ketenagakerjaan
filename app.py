@@ -81,56 +81,47 @@ with tab1:
 
     target_query = clicked_query if clicked_query else (user_query if submit_btn else None)
 
+    if target_query:
+        # Proses permintaan baru dan masukkan ke riwayat
+        try:
+            if not text_uu_13 and not text_uu_6:
+                full_response = "File PDF dokumen undang-undang tidak ditemukan atau gagal dibaca di direktori."
+            else:
+                model = genai.GenerativeModel('gemini-3.6-flash')
+                
+                combined_docs = f"""
+                === DOKUMEN 1: UU NO. 13 TAHUN 2003 TENTANG KETENAGAKERJAAN ===
+                {text_uu_13[:40000]}
+                
+                === DOKUMEN 2: UU NO. 6 TAHUN 2023 TENTANG CIPTA KERJA ===
+                {text_uu_6[:40000]}
+                """
+                
+                prompt = f"""
+                Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional.
+                Jawablah pertanyaan berdasarkan teks dokumen Undang-Undang yang tersedia di bawah ini.
+                Wajib sebutkan nomor pasal atau bagian undang-undang secara spesifik jika ada di dalam teks.
+                Jika informasi tidak ditemukan di dalam teks dokumen yang terlampir, jelaskan bagian apa saja dari undang-undang yang saat ini terbaca.
+                Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
+
+                {combined_docs}
+
+                Pertanyaan Pengguna: {target_query}
+                """
+                
+                response = model.generate_content(prompt)
+                full_response = response.text
+        except Exception as e:
+            full_response = f"Terjadi kesalahan: {e}"
+
+        # Menyimpan pertanyaan dan jawaban ke urutan paling depan (index 0) agar muncul di atas
+        st.session_state.messages.insert(0, {"role": "user", "content": target_query})
+        st.session_state.messages.insert(1, {"role": "assistant", "content": full_response})
+
+    # Menampilkan riwayat percakapan dari yang terbaru (di atas)
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-
-    if target_query:
-        st.session_state.messages.append({"role": "user", "content": target_query})
-        with st.chat_message("user"):
-            st.markdown(target_query)
-            
-        with st.chat_message("assistant"):
-            message_placeholder = st.empty()
-            message_placeholder.markdown("⏳ *Sedang menganalisis dokumen Undang-Undang...*")
-            full_response = ""
-            
-            try:
-                if not text_uu_13 and not text_uu_6:
-                    message_placeholder.error("File PDF dokumen undang-undang tidak ditemukan atau gagal dibaca di direktori.")
-                else:
-                    model = genai.GenerativeModel('gemini-3.6-flash')
-                    
-                    combined_docs = f"""
-                    === DOKUMEN 1: UU NO. 13 TAHUN 2003 TENTANG KETENAGAKERJAAN ===
-                    {text_uu_13[:40000]}
-                    
-                    === DOKUMEN 2: UU NO. 6 TAHUN 2023 TENTANG CIPTA KERJA ===
-                    {text_uu_6[:40000]}
-                    """
-                    
-                    prompt = f"""
-                    Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional.
-                    Jawablah pertanyaan berdasarkan teks dokumen Undang-Undang yang tersedia di bawah ini.
-                    Wajib sebutkan nomor pasal atau bagian undang-undang secara spesifik jika ada di dalam teks.
-                    Jika informasi tidak ditemukan di dalam teks dokumen yang terlampir, jelaskan bagian apa saja dari undang-undang yang saat ini terbaca.
-                    Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
-
-                    {combined_docs}
-
-                    Pertanyaan Pengguna: {target_query}
-                    """
-                    
-                    response = model.generate_content(prompt, stream=True)
-                    for chunk in response:
-                        if chunk.text:
-                            full_response += chunk.text
-                            message_placeholder.markdown(full_response + "▌")
-                    
-                    message_placeholder.markdown(full_response)
-                    st.session_state.messages.append({"role": "assistant", "content": full_response})
-            except Exception as e:
-                message_placeholder.error(f"Terjadi kesalahan: {e}")
 
 with tab2:
     st.subheader("📖 Download Dokumen Undang-Undang")
