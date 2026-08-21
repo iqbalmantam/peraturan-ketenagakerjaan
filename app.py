@@ -16,11 +16,24 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Ambil API Key Groq dari Streamlit Secrets
-groq_key = st.secrets.get("GROQ_API_KEY") or (st.secrets.get("general") or {}).get("GROQ_API_KEY")
+# --- FUNGSI GROQ DARI APLIKASI SEBELUMNYA ---
+def get_groq_client():
+    groq_key = st.secrets.get("GROQ_API_KEY", "")
+    if not groq_key:
+        return None
+    return Groq(api_key=groq_key)
+
+def generate_ai_response(client, api_messages):
+    completion = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=api_messages,
+        temperature=0.2,
+        max_tokens=1024,
+    )
+    return completion.choices[0].message.content
 
 # Inisialisasi Klien Groq
-client = Groq(api_key=groq_key) if groq_key else None
+client = get_groq_client()
 
 # --- DEFINISI FILE PDF ---
 FILE_UU_6 = "Undang-undang Nomor 6 Tahun 2023.pdf"
@@ -98,17 +111,12 @@ with tab1:
                 
                 system_prompt = "Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti. Jawablah pertanyaan berdasarkan teks dokumen Undang-Undang yang tersedia. Wajib sebutkan nomor pasal, ayat, atau bagian undang-undang secara spesifik. Jika informasi tidak ditemukan, katakan dengan jujur. Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi."
                 
-                # Menggunakan model llama3-8b-8192 yang stabil dan selalu tersedia di Groq
-                chat_completion = client.chat.completions.create(
-                    model="llama3-8b-8192",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Dokumen Referensi:\n{combined_docs}\n\nPertanyaan Pengguna: {target_query}"}
-                    ],
-                    temperature=0.3,
-                    max_tokens=2048
-                )
-                full_response = chat_completion.choices[0].message.content
+                api_messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Dokumen Referensi:\n{combined_docs}\n\nPertanyaan Pengguna: {target_query}"}
+                ]
+                
+                full_response = generate_ai_response(client, api_messages)
         except Exception as e:
             full_response = f"Terjadi kesalahan: {e}"
 
