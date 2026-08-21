@@ -19,15 +19,15 @@ st.markdown("""
 # Ambil API Key Gemini dari Streamlit Secrets
 gemini_key = st.secrets.get("GEMINI_API_KEY") or (st.secrets.get("general") or {}).get("GEMINI_API_KEY")
 
-if gemini_key:
-    genai.configure(api_key=gemini_key)
-
 # --- DEFINISI FILE PDF ---
 FILE_UU_6 = "Undang-undang Nomor 6 Tahun 2023.pdf"
 FILE_UU_13 = "UU No 13 Tahun 2003.pdf"
 
 path_uu_6 = Path(__file__).parent / FILE_UU_6
 path_uu_13 = Path(__file__).parent / FILE_UU_13
+
+if gemini_key:
+    genai.configure(api_key=gemini_key)
 
 # Fungsi Membaca PDF secara lokal
 @st.cache_resource
@@ -59,12 +59,12 @@ with tab1:
     st.markdown("💡 **Pilih topik pertanyaan populer berdasarkan dokumen ketenagakerjaan:**")
     
     quick_questions = [
-        {"label": "📝 Ketentuan PHK & Pesangon", "prompt": "Bagaimana aturan pemutusan hubungan kerja (PHK) serta perhitungan uang pesangon dan penghargaan masa kerja berdasarkan dokumen undang-undang ketenagakerjaan?"},
-        {"label": "📅 Waktu Istirahat & Cuti", "prompt": "Bagaimana ketentuan waktu istirahat, istirahat mingguan, dan cuti tahunan minimal 12 hari menurut dokumen undang-undang?"},
-        {"label": "📜 Kontrak PKWT & Kompensasi", "prompt": "Bagaimana ketentuan Perjanjian Kerja Waktu Tertentu (PKWT) serta aturan masa berlakunya dalam dokumen undang-undang?"},
-        {"label": "👥 Alih Daya (Outsourcing)", "prompt": "Bagaimana aturan mengenai perusahaan alih daya (outsourcing) dan batasan pekerjaannya berdasarkan dokumen undang-undang?"},
-        {"label": "⏰ Jam Kerja & Lembur", "prompt": "Bagaimana ketentuan waktu kerja (5 atau 6 hari kerja) serta syarat upah kerja lembur menurut dokumen undang-undang?"},
-        {"label": "💰 Kebijakan Upah Minimum", "prompt": "Bagaimana prinsip dan kebijakan penetapan upah minimum yang melindungi pekerja berdasarkan dokumen undang-undang?"}
+        {"label": "🏫 Pelatihan Kerja", "prompt": "Bagaimana ketentuan penyelenggaraan pelatihan kerja berdasarkan dokumen undang-undang ketenagakerjaan?"},
+        {"label": "🌍 Tenaga Kerja Asing (TKA)", "prompt": "Bagaimana ketentuan penggunaan tenaga kerja asing (TKA) berdasarkan dokumen undang-undang?"},
+        {"label": "📜 Perjanjian Kerja (PKWT)", "prompt": "Bagaimana ketentuan perjanjian kerja waktu tertentu (PKWT) berdasarkan dokumen undang-undang?"},
+        {"label": "👥 Alih Daya (Outsourcing)", "prompt": "Bagaimana ketentuan penyerahan sebagian pekerjaan atau alih daya berdasarkan dokumen undang-undang?"},
+        {"label": "🔍 Ringkasan Dokumen", "prompt": "Apa saja pokok-pokok materi yang dimuat dalam teks dokumen undang-undang yang tersedia saat ini?"},
+        {"label": "📋 Ketentuan Umum", "prompt": "Apa saja definisi penting mengenai ketenagakerjaan yang diatur dalam Bab I dokumen undang-undang?"}
     ]
     
     cols = st.columns(3)
@@ -82,13 +82,12 @@ with tab1:
     target_query = clicked_query if clicked_query else (user_query if submit_btn else None)
 
     if target_query:
+        # Proses permintaan baru dan masukkan ke riwayat
         try:
-            if not gemini_key:
-                full_response = "API Key Gemini belum diatur di Streamlit Secrets (`GEMINI_API_KEY`)."
-            elif not text_uu_13 and not text_uu_6:
+            if not text_uu_13 and not text_uu_6:
                 full_response = "File PDF dokumen undang-undang tidak ditemukan atau gagal dibaca di direktori."
             else:
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-3.6-flash')
                 
                 combined_docs = f"""
                 === DOKUMEN 1: UU NO. 13 TAHUN 2003 TENTANG KETENAGAKERJAAN ===
@@ -99,10 +98,10 @@ with tab1:
                 """
                 
                 prompt = f"""
-                Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti.
+                Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional.
                 Jawablah pertanyaan berdasarkan teks dokumen Undang-Undang yang tersedia di bawah ini.
-                Wajib sebutkan nomor pasal, ayat, atau bagian undang-undang secara spesifik (contoh: Pasal X UU No. ... jo. Pasal Y UU No. ...).
-                Jika informasi tidak ditemukan di kedua dokumen, katakan dengan jujur bahwa informasi tersebut tidak tersedia.
+                Wajib sebutkan nomor pasal atau bagian undang-undang secara spesifik jika ada di dalam teks.
+                Jika informasi tidak ditemukan di dalam teks dokumen yang terlampir, jelaskan bagian apa saja dari undang-undang yang saat ini terbaca.
                 Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
 
                 {combined_docs}
