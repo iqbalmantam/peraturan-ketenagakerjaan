@@ -90,16 +90,17 @@ with tab1:
             else:
                 combined_docs = f"""
                 === DOKUMEN 1: UU NO. 13 TAHUN 2003 TENTANG KETENAGAKERJAAN ===
-                {text_uu_13[:40000]}
+                {text_uu_13[:25000]}
                 
                 === DOKUMEN 2: UU NO. 6 TAHUN 2023 TENTANG CIPTA KERJA ===
-                {text_uu_6[:40000]}
+                {text_uu_6[:25000]}
                 """
                 
                 system_prompt = "Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti. Jawablah pertanyaan berdasarkan teks dokumen Undang-Undang yang tersedia. Wajib sebutkan nomor pasal, ayat, atau bagian undang-undang secara spesifik. Jika informasi tidak ditemukan, katakan dengan jujur. Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi."
                 
+                # Menggunakan model llama-3.1-8b-instant yang sangat stabil di Groq
                 chat_completion = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="llama-3.1-8b-instant",
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": f"Dokumen Referensi:\n{combined_docs}\n\nPertanyaan Pengguna: {target_query}"}
