@@ -88,7 +88,8 @@ with tab1:
             elif not text_uu_13 and not text_uu_6:
                 full_response = "File PDF dokumen undang-undang tidak ditemukan atau gagal dibaca di direktori."
             else:
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # Menggunakan model gemini-2.0-flash yang aktif dan stabil
+                model = genai.GenerativeModel('gemini-2.0-flash')
                 
                 combined_docs = f"""
                 === DOKUMEN 1: UU NO. 13 TAHUN 2003 TENTANG KETENAGAKERJAAN ===
