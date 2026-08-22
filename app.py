@@ -1,12 +1,13 @@
-import streamlit as st
-import pypdf
 import os
-import re
+import streamlit as st
+import google.generativeai as genai
+from pypdf import PdfReader
+from pathlib import Path
 
 # Konfigurasi Halaman
-st.set_page_config(page_title="Local Legal Agent (UU No. 13/2003)", page_icon="⚖️", layout="wide")
+st.set_page_config(page_title="Asisten Ketenagakerjaan (UU No. 6/2023 & UU No. 13/2003)", layout="wide")
 
-# CSS untuk merapikan tampilan
+# CSS untuk menyembunyikan header/ikon bawaan Streamlit
 st.markdown("""
     <style>
     [data-testid="stHeader"] {
@@ -15,105 +16,145 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Nama file PDF lokal di GitHub
-PDF_FILENAME = "UU No 13 Tahun 2003.pdf"
+# Ambil API Key Gemini dari Streamlit Secrets
+gemini_key = st.secrets.get("GEMINI_API_KEY") or (st.secrets.get("general") or {}).get("GEMINI_API_KEY")
+
+if gemini_key:
+    genai.configure(api_key=gemini_key)
+
+# --- DEFINISI FILE PDF ---
+FILE_UU_6 = "Undang-undang Nomor 6 Tahun 2023.pdf"
+FILE_UU_13 = "UU No 13 Tahun 2003.pdf"
+
+path_uu_6 = Path(__file__).parent / FILE_UU_6
+path_uu_13 = Path(__file__).parent / FILE_UU_13
 
 # Fungsi Membaca PDF secara lokal
 @st.cache_resource
-def load_pdf_text():
-    if not os.path.exists(PDF_FILENAME):
-        return None
-    reader = pypdf.PdfReader(PDF_FILENAME)
-    teks_gabungan = ""
-    for halaman in reader.pages:
-        teks = halaman.extract_text()
-        if teks:
-            teks_gabungan += teks + "\n"
-    return teks_gabungan
+def get_pdf_text(path):
+    if not path.exists(): return ""
+    try:
+        reader = PdfReader(path)
+        return "\n".join([page.extract_text() for page in reader.pages if page.extract_text()])
+    except Exception:
+        return ""
 
-teks_dokumen = load_pdf_text()
+# Membaca teks dokumen
+text_uu_6 = get_pdf_text(path_uu_6)
+text_uu_13 = get_pdf_text(path_uu_13)
 
-st.title("⚖️ Local Legal Agent: Spesialis UU No. 13 Tahun 2003")
-st.markdown("AI Agent mandiri yang memindai dan mencarikan pasal secara presisi langsung dari dokumen **UU No. 13 Tahun 2003 tentang Ketenagakerjaan**[cite: 1] tanpa ketergantungan pada layanan AI eksternal.")
+st.title("⚖️ Asisten Hukum Ketenagakerjaan")
+st.markdown("Asisten cerdas untuk informasi **UU No. 6 Tahun 2023** (Cipta Kerja) dan **UU No. 13 Tahun 2003** (Ketenagakerjaan).")
 
-# --- PENCARIAN BERBASIS PASAL ---
-st.subheader("🔍 Mesin Pencari & Analisis Pasal")
+# Inisialisasi Riwayat Percakapan
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-# Tombol Cepat untuk Topik Populer
-st.markdown("💡 **Pilih topik instan untuk melihat pasal terkait:**")
-col1, col2, col3, col4 = st.columns(4)
+# --- MENU UTAMA ---
+tab1, tab2 = st.tabs(["💬 Tanya Jawab AI", "📖 Download Dokumen Undang-Undang"])
 
-selected_keyword = None
-if col1.button("💰 Pesangon (Pasal 156)", use_container_width=True):
-    selected_keyword = "pesangon"
-if col2.button("📜 PKWT (Pasal 59)", use_container_width=True):
-    selected_keyword = "perjanjian kerja untuk waktu tertentu"
-if col3.button("⏳ Masa Percobaan", use_container_width=True):
-    selected_keyword = "masa percobaan"
-if col4.button("🏖️ Cuti & Istirahat", use_container_width=True):
-    selected_keyword = "waktu istirahat"
-
-st.markdown("---")
-
-# Input Pencarian Manual
-keyword_input = st.text_input(
-    "Atau masukkan kata kunci pencarian hukum:", 
-    value=selected_keyword if selected_keyword else "",
-    placeholder="contoh: pemutusan hubungan kerja, skorsing, lembur..."
-)
-
-def cari_pasal_lokal(teks, keyword):
-    if not teks:
-        return []
-    # Memecah dokumen berdasarkan pola "Pasal [angka]"
-    pasal_list = re.split(r'(Pasal\s+\d+)', teks)
-    results = []
+with tab1:
+    st.markdown("### Kolom Pertanyaan")
     
-    for i in range(1, len(pasal_list), 2):
-        header = pasal_list[i]
-        body = pasal_list[i+1] if i+1 < len(pasal_list) else ""
-        full_block = header + body
-        
-        # Abaikan Pasal 1 (Ketentuan Umum) agar hasil lebih spesifik ke substansi
-        if "pasal 1" in header.lower():
-            continue
-            
-        if keyword in full_block.lower():
-            matching_lines = [line.strip() for line in full_block.split('\n') if keyword in line.lower() or "pasal" in line.lower()]
-            results.append({
-                "title": header,
-                "matching_lines": matching_lines,
-                "full_text": full_block.strip()
-            })
-    return results
+    st.markdown("💡 **Pilih topik pertanyaan populer berdasarkan dokumen ketenagakerjaan:**")
+    
+    quick_questions = [
+        {"label": "📝 Ketentuan PHK & Pesangon", "prompt": "Bagaimana aturan pemutusan hubungan kerja (PHK) serta perhitungan uang pesangon dan penghargaan masa kerja berdasarkan dokumen undang-undang ketenagakerjaan?"},
+        {"label": "📅 Waktu Istirahat & Cuti", "prompt": "Bagaimana ketentuan waktu istirahat, istirahat mingguan, dan cuti tahunan minimal 12 hari menurut dokumen undang-undang?"},
+        {"label": "📜 Kontrak PKWT & Kompensasi", "prompt": "Bagaimana ketentuan Perjanjian Kerja Waktu Tertentu (PKWT) serta aturan masa berlakunya dalam dokumen undang-undang?"},
+        {"label": "👥 Alih Daya (Outsourcing)", "prompt": "Bagaimana aturan mengenai perusahaan alih daya (outsourcing) dan batasan pekerjaannya berdasarkan dokumen undang-undang?"},
+        {"label": "⏰ Jam Kerja & Lembur", "prompt": "Bagaimana ketentuan waktu kerja (5 atau 6 hari kerja) serta syarat upah kerja lembur menurut dokumen undang-undang?"},
+        {"label": "💰 Kebijakan Upah Minimum", "prompt": "Bagaimana prinsip dan kebijakan penetapan upah minimum yang melindungi pekerja berdasarkan dokumen undang-undang?"}
+    ]
+    
+    cols = st.columns(3)
+    clicked_query = None
+    for i, q in enumerate(quick_questions):
+        if cols[i % 3].button(q["label"], use_container_width=True):
+            clicked_query = q["prompt"]
 
-if st.button("🚀 Jalankan Pencarian Dokumen", type="primary"):
-    if teks_dokumen is None:
-        st.error(f"⚠️ File '{PDF_FILENAME}' tidak ditemukan di repository GitHub Anda. Pastikan file PDF tersebut sudah di-upload sejajar dengan file app.py.")
-    elif not keyword_input.strip():
-        st.warning("⚠️ Harap masukkan kata kunci pencarian terlebih dahulu.")
-    else:
-        with st.spinner("Sistem sedang memindai pasal-pasal relevan dari dokumen..."):
-            kw = keyword_input.lower()
-            hasil_pencarian = cari_pasal_lokal(teks_dokumen, kw)
-            
-        st.success("Pencarian Selesai!")
-        st.markdown(f"### 📋 Hasil Pencarian untuk: *'{keyword_input}'*")
-        
-        if hasil_pencarian:
-            st.info(f"Ditemukan **{len(hasil_pencarian)} Pasal** yang relevan dalam dokumen[cite: 1]:")
-            
-            for idx, item in enumerate(hasil_pencarian[:10], 1):
-                with st.expander(f"Hasil {idx}: {item['title']} (Relevan dengan topik)"):
-                    st.markdown("**Poin Penting:**")
-                    for line in item['matching_lines'][:5]:
-                        st.write(f"- {line}")
-                        
-                    with st.expander("📖 Lihat Teks Lengkap Pasal Ini"):
-                        st.text(item['full_text'])
+    st.markdown("---")
+    
+    with st.form(key="query_form", clear_on_submit=True):
+        user_query = st.text_input("Atau ketik pertanyaan Anda sendiri di sini:")
+        submit_btn = st.form_submit_button("Kirim Pertanyaan")
+
+    target_query = clicked_query if clicked_query else (user_query if submit_btn else None)
+
+    if target_query:
+        try:
+            if not gemini_key:
+                full_response = "API Key Gemini belum diatur di Streamlit Secrets (`GEMINI_API_KEY`)."
+            elif not text_uu_13 and not text_uu_6:
+                full_response = "File PDF dokumen undang-undang tidak ditemukan atau gagal dibaca di direktori."
+            else:
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                combined_docs = f"""
+                === DOKUMEN 1: UU NO. 13 TAHUN 2003 TENTANG KETENAGAKERJAAN ===
+                {text_uu_13[:40000]}
+                
+                === DOKUMEN 2: UU NO. 6 TAHUN 2023 TENTANG CIPTA KERJA ===
+                {text_uu_6[:40000]}
+                """
+                
+                prompt = f"""
+                Anda adalah Ahli Hukum Ketenagakerjaan dan Asisten profesional yang teliti.
+                Jawablah pertanyaan berdasarkan teks dokumen Undang-Undang yang tersedia di bawah ini.
+                Wajib sebutkan nomor pasal, ayat, atau bagian undang-undang secara spesifik (contoh: Pasal X UU No. ... jo. Pasal Y UU No. ...).
+                Jika informasi tidak ditemukan di kedua dokumen, katakan dengan jujur bahwa informasi tersebut tidak tersedia.
+                Sajikan jawaban secara terstruktur dalam bentuk poin-poin yang rapi.
+
+                {combined_docs}
+
+                Pertanyaan Pengguna: {target_query}
+                """
+                
+                response = model.generate_content(prompt)
+                full_response = response.text
+        except Exception as e:
+            full_response = f"Terjadi kesalahan: {e}"
+
+        # Menyimpan pertanyaan dan jawaban ke urutan paling depan (index 0) agar muncul di atas
+        st.session_state.messages.insert(0, {"role": "user", "content": target_query})
+        st.session_state.messages.insert(1, {"role": "assistant", "content": full_response})
+
+    # Menampilkan riwayat percakapan dari yang terbaru (di atas)
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+with tab2:
+    st.subheader("📖 Download Dokumen Undang-Undang")
+    st.markdown("Pilih dokumen undang-undang yang ingin Anda unduh:")
+    
+    col_dl1, col_dl2 = st.columns(2)
+    with col_dl1:
+        if path_uu_13.exists():
+            with open(path_uu_13, "rb") as f:
+                st.download_button("📥 Download UU No. 13 Tahun 2003 (PDF)", f, file_name=FILE_UU_13, mime="application/pdf")
         else:
-            st.warning("Kata kunci tidak ditemukan. Coba gunakan istilah lain seperti 'pesangon', 'phk', atau 'upah'.")
+            st.warning(f"File `{FILE_UU_13}` tidak ditemukan.")
+            
+    with col_dl2:
+        if path_uu_6.exists():
+            with open(path_uu_6, "rb") as f:
+                st.download_button("📥 Download UU No. 6 Tahun 2023 (PDF)", f, file_name=FILE_UU_6, mime="application/pdf")
+        else:
+            st.warning(f"File `{FILE_UU_6}` tidak ditemukan.")
 
-# Footer
+# Admin
+with st.expander("🔐 Mode Admin"):
+    admin_pw = st.text_input("Password:", type="password", key="admin_pwd")
+    if admin_pw == "2273":
+        target_upload = st.selectbox("Pilih file yang ingin diperbarui:", [FILE_UU_13, FILE_UU_6])
+        uploaded = st.file_uploader("Upload PDF baru", type=["pdf"])
+        if uploaded:
+            target_path = path_uu_13 if target_upload == FILE_UU_13 else path_uu_6
+            with open(target_path, "wb") as f: 
+                f.write(uploaded.getbuffer())
+            st.cache_resource.clear()
+            st.success(f"File `{target_upload}` berhasil diperbarui! Silakan refresh halaman.")
+
 st.markdown("---")
-st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Local Compliance Agent • Berbasis UU No. 13 Tahun 2003[cite: 1] • Dikelola via GitHub & Streamlit</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray; font-size: 13px;'>Developed by <b>iqbalmantam</b></p>", unsafe_allow_html=True)
